@@ -137,17 +137,8 @@ uv run ruff check src/   # lint
 This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format
 and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-**Every change must be recorded in `CHANGELOG.md`.** This is mandatory — do not skip it.
-
-### Rules
-
-- Add entries under `## [Unreleased]` at the top as changes are made
-- When cutting a release, rename `[Unreleased]` to the version + date (e.g. `[0.2.0] - 2026-04-01`)
-  and add a fresh empty `[Unreleased]` section above it
-- Update the version string in `src/youtube_transcriber/__init__.py` to match the release
-- Update the version in `pyproject.toml` to match the release
-
-### Change categories (use only these headings)
+When work is complete and ready to record, add an entry to `CHANGELOG.md` under the
+appropriate version section. Use one of these category headings:
 
 | Category | When to use |
 |---|---|
@@ -158,23 +149,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 | `Fixed` | Bug fixes |
 | `Security` | Security-related changes or vulnerability fixes |
 
-### Example entry format
-
-```markdown
-## [Unreleased]
-
-### Added
-- `playlist` command for batch transcription of YouTube playlists (#42)
-
-### Fixed
-- Temp files now cleaned up correctly when yt-dlp raises a network error (#38)
-```
-
 ### Version bump checklist
-1. Fill in `## [Unreleased]` with all changes since the last release
-2. Rename it to the new version + today's date
-3. Add a blank `## [Unreleased]` section above it
-4. Update `__version__` in `src/youtube_transcriber/__init__.py`
-5. Update `version` in `pyproject.toml`
-6. Run `uv run pytest` and `uv run ruff check src/ tests/` — both must pass
-7. Commit with message: `chore: release vX.Y.Z`
+1. Add all completed changes to `CHANGELOG.md` under the new version + today's date
+2. Update `__version__` in `src/youtube_transcriber/__init__.py`
+3. Update `version` in `pyproject.toml`
+4. Run `uv run pytest` and `uv run ruff check src/ tests/` — both must pass
+5. Commit with message: `chore: release vX.Y.Z`
