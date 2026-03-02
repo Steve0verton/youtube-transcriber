@@ -6,7 +6,12 @@ structured results with per-segment timestamps.
 
 from __future__ import annotations
 
+import contextlib
 import logging
+import os
+import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -56,6 +61,79 @@ AVAILABLE_MODELS: dict[str, dict[str, str]] = {
 
 DEFAULT_MODEL: str = "turbo"
 
+# Mapping from user-facing model names to HuggingFace repos for mlx-whisper.
+# mlx-whisper uses Apple's MLX framework for GPU-accelerated transcription on
+# Apple Silicon (M-series chips) via Metal and the Apple Neural Engine.
+# Models are downloaded from HuggingFace on first use and cached locally.
+MLX_MODEL_REPOS: dict[str, str] = {
+    "tiny":             "mlx-community/whisper-tiny-mlx",
+    "tiny.en":          "mlx-community/whisper-tiny.en-mlx",
+    "base":             "mlx-community/whisper-base-mlx",
+    "base.en":          "mlx-community/whisper-base.en-mlx",
+    "small":            "mlx-community/whisper-small-mlx",
+    "small.en":         "mlx-community/whisper-small.en-mlx",
+    "medium":           "mlx-community/whisper-medium-mlx",
+    "medium.en":        "mlx-community/whisper-medium.en-mlx",
+    "large-v1":         "mlx-community/whisper-large-v1-mlx",
+    "large-v2":         "mlx-community/whisper-large-v2-mlx",
+    "large-v3":         "mlx-community/whisper-large-v3-mlx",
+    # turbo = openai/whisper-large-v3-turbo (pruned large-v3, 8× faster)
+    "turbo":            "mlx-community/whisper-large-v3-turbo",
+    "distil-small.en":  "mlx-community/distil-whisper-small.en-mlx",
+    "distil-medium.en": "mlx-community/distil-whisper-medium.en-mlx",
+    "distil-large-v2":  "mlx-community/distil-whisper-large-v2-mlx",
+    "distil-large-v3":  "mlx-community/distil-whisper-large-v3-mlx",
+}
+
+# HuggingFace hub cache root (respects HF_HOME / HF_HUB_CACHE env overrides)
+_HF_CACHE_ROOT: Path = Path(
+    os.environ.get(
+        "HF_HUB_CACHE",
+        os.path.join(os.environ.get("HF_HOME", os.path.expanduser("~/.cache/huggingface")), "hub"),
+    )
+)
+
+
+@contextmanager
+def _stdout_to_stderr() -> Iterator[None]:
+    """Temporarily redirect sys.stdout writes to sys.stderr.
+
+    Used so that mlx_whisper's verbose=True per-segment progress output goes to
+    stderr (alongside other progress messages) instead of polluting stdout (which
+    carries the final transcript).
+    """
+    old_stdout = sys.stdout
+    sys.stdout = sys.stderr
+    try:
+        yield
+    finally:
+        sys.stdout = old_stdout
+
+
+def _mlx_model_cache_path(hf_repo: str) -> Path | None:
+    """Return the local cache directory for an MLX HuggingFace repo, or None if not cached.
+
+    Uses the HuggingFace hub cache layout:
+        ~/.cache/huggingface/hub/models--<org>--<repo>/snapshots/<hash>/
+
+    Args:
+        hf_repo: HuggingFace repo ID, e.g. ``"mlx-community/whisper-tiny-mlx"``.
+
+    Returns:
+        Path to the snapshot directory if fully cached, None otherwise.
+    """
+    try:
+        from huggingface_hub import try_to_load_from_cache  # type: ignore[import-untyped]
+
+        # Probe for a file that every mlx-whisper model has
+        result = try_to_load_from_cache(hf_repo, "config.json", cache_dir=_HF_CACHE_ROOT)
+        if result and not isinstance(result, type(None)):
+            # result is a full file path; the snapshot dir is two levels up
+            return Path(str(result)).parent
+    except Exception:
+        pass
+    return None
+
 
 @dataclass
 class TranscriptSegment:
@@ -92,31 +170,153 @@ class TranscriptResult:
         return " ".join(seg.text.strip() for seg in self.segments)
 
 
+def _transcribe_mlx(
+    audio_path: Path,
+    model_name: str,
+    vad_filter: bool,
+    verbose: bool,
+) -> TranscriptResult:
+    """Transcribe using mlx-whisper (Apple Silicon Metal/ANE GPU backend).
+
+    Requires the ``mlx`` optional dependency group:
+        uv sync --extra mlx
+
+    Args:
+        audio_path: Path to the audio file.
+        model_name: Whisper model name (e.g. "turbo", "large-v3").
+        vad_filter: Not supported by mlx-whisper; ignored with a warning.
+        verbose: If True, write progress messages to stderr.
+
+    Returns:
+        A TranscriptResult with segments, language, and duration.
+
+    Raises:
+        click.ClickException: If mlx-whisper is not installed or transcription fails.
+    """
+    try:
+        import mlx_whisper  # type: ignore[import-untyped]
+    except ImportError as exc:
+        raise click.ClickException(
+            "mlx-whisper is not installed. Install it with:\n"
+            "  uv sync --extra mlx\n\n"
+            "This is required for GPU-accelerated transcription on Apple Silicon.\n"
+            "Alternatively, force CPU mode with: --device cpu"
+        ) from exc
+
+    hf_repo = MLX_MODEL_REPOS.get(model_name)
+    if hf_repo is None:
+        raise click.ClickException(
+            f"Model '{model_name}' has no MLX repo mapping. "
+            "Use --device cpu to fall back to faster-whisper."
+        )
+
+    if vad_filter:
+        click.echo(
+            "  Warning: --vad is not supported with the MLX backend and will be ignored.",
+            err=True,
+        )
+
+    if verbose:
+        # Check whether the model weights are already in the HF cache
+        cached_path = _mlx_model_cache_path(hf_repo)
+        if cached_path:
+            click.echo(
+                f"  Model '{model_name}' loaded from cache:",
+                err=True,
+            )
+            click.echo(f"    {cached_path}", err=True)
+        else:
+            click.echo(
+                f"  Model '{model_name}' not in cache — downloading from HuggingFace...",
+                err=True,
+            )
+            click.echo(f"    Repo : {hf_repo}", err=True)
+            click.echo(f"    Cache: {_HF_CACHE_ROOT}", err=True)
+
+        click.echo("  Transcribing audio segments (Apple Silicon GPU):", err=True)
+
+    log.debug("MLX transcribe: path=%s model=%s repo=%s", audio_path, model_name, hf_repo)
+
+    try:
+        # When verbose, mlx_whisper prints each decoded segment as "[HH:MM:SS --> HH:MM:SS] text".
+        # Redirect stdout → stderr so that output appears alongside other progress messages
+        # and does NOT pollute the transcript written to stdout.
+        stdout_ctx = _stdout_to_stderr() if verbose else contextlib.nullcontext()
+        with stdout_ctx:
+            raw = mlx_whisper.transcribe(
+                str(audio_path),
+                path_or_hf_repo=hf_repo,
+                verbose=verbose,  # None = silent, True = per-segment timestamps + text
+            )
+    except Exception as exc:
+        log.exception("mlx-whisper transcription failed for path=%s", audio_path)
+        raise click.ClickException(f"mlx-whisper transcription failed: {exc}") from exc
+
+    segments: list[TranscriptSegment] = []
+    for seg in raw.get("segments", []):
+        segments.append(
+            TranscriptSegment(
+                start=float(seg["start"]),
+                end=float(seg["end"]),
+                text=seg["text"],
+            )
+        )
+
+    duration = float(raw["segments"][-1]["end"]) if raw.get("segments") else 0.0
+    result = TranscriptResult(
+        segments=segments,
+        language=raw.get("language", "unknown"),
+        duration=duration,
+    )
+
+    if verbose:
+        from youtube_transcriber.utils import format_duration
+        click.echo("", err=True)
+        click.echo(
+            f"  Transcription complete. "
+            f"Language: {result.language} | "
+            f"Duration: {format_duration(result.duration)} | "
+            f"Segments: {len(segments)}",
+            err=True,
+        )
+
+    return result
+
+
 def transcribe_audio(
     audio_path: Path,
     model_name: str = DEFAULT_MODEL,
     device: str = "auto",
     compute_type: str = "auto",
     beam_size: int = 5,
+    num_threads: int = 4,
     vad_filter: bool = False,
     verbose: bool = True,
 ) -> TranscriptResult:
-    """Transcribe an audio file using faster-whisper.
+    """Transcribe an audio file using the best available backend.
+
+    Automatically selects the transcription backend based on ``device``:
+
+    * ``"mps"``  → mlx-whisper (Apple Silicon GPU via Metal/ANE).  Requires
+      the ``mlx`` optional dependency: ``uv sync --extra mlx``.
+    * ``"cuda"`` → faster-whisper with float16 on an NVIDIA GPU.
+    * ``"cpu"``  → faster-whisper with int8 quantization (all platforms).
+    * ``"auto"`` → auto-detects: mps → cuda → cpu.
 
     Downloads the specified model on first use (cached in HuggingFace cache).
-    Automatically selects float16 on GPU and int8 on CPU for best performance.
 
     Args:
         audio_path: Path to the audio file to transcribe.
         model_name: Whisper model name (e.g. "turbo", "large-v3", "small").
-        device: Compute device — "auto", "cuda", or "cpu".
-            "auto" will use CUDA if available, otherwise CPU.
-        compute_type: Quantization type — "auto", "float16", "int8_float16", "int8".
-            "auto" selects float16 for CUDA, int8 for CPU.
+        device: Compute device — "auto", "mps", "cuda", or "cpu".
+        compute_type: Quantization type for faster-whisper — "auto", "float16",
+            "int8_float16", "int8". Ignored when using the MLX backend.
         beam_size: Beam size for beam search decoding (higher = more accurate, slower).
-        vad_filter: Enable Silero VAD pre-filtering to strip silence before transcribing.
-            Speeds up speech-only recordings (talks, podcasts) but will discard speech
-            that is mixed with music or background audio. Disabled by default.
+            Ignored when using the MLX backend (which uses greedy decoding).
+        num_threads: Maximum CPU threads for faster-whisper. Defaults to 4 to
+            avoid pegging all cores. Ignored when using the MLX (mps) backend.
+        vad_filter: Enable Silero VAD pre-filtering to strip silence.
+            Not supported by the MLX backend; ignored with a warning.
         verbose: If True, write progress messages to stderr.
 
     Returns:
@@ -130,10 +330,15 @@ def transcribe_audio(
     # Resolve device
     resolved_device = detect_device() if device == "auto" else device
 
+    # Route to MLX backend for Apple Silicon
+    if resolved_device == "mps":
+        return _transcribe_mlx(audio_path, model_name, vad_filter=vad_filter, verbose=verbose)
+
     if verbose:
         device_label = "GPU (CUDA)" if resolved_device == "cuda" else "CPU"
         click.echo(
-            f"  Loading model '{model_name}' on {device_label}...",
+            f"  Loading model '{model_name}' on {device_label} "
+            f"(threads: {num_threads})...",
             err=True,
         )
 
@@ -155,6 +360,7 @@ def transcribe_audio(
             model_name,
             device=resolved_device,
             compute_type=resolved_compute_type,
+            cpu_threads=num_threads,
         )
         log.debug(
             "Loaded model: name=%s device=%s compute_type=%s",

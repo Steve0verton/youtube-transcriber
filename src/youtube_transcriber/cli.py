@@ -19,7 +19,12 @@ from youtube_transcriber import __version__
 from youtube_transcriber.formatters import FORMAT_FUNCTIONS
 from youtube_transcriber.logging_config import DEFAULT_LOG_PATH, setup_logging
 from youtube_transcriber.transcriber import AVAILABLE_MODELS, DEFAULT_MODEL
-from youtube_transcriber.utils import check_ffmpeg, is_youtube_url
+from youtube_transcriber.utils import (
+    acquire_run_lock,
+    check_ffmpeg,
+    is_youtube_url,
+    release_run_lock,
+)
 
 log = logging.getLogger(__name__)
 
@@ -73,9 +78,11 @@ def cli() -> None:
     "-d",
     default="auto",
     show_default=True,
-    type=click.Choice(["auto", "cuda", "cpu"], case_sensitive=False),
+    type=click.Choice(["auto", "mps", "cuda", "cpu"], case_sensitive=False),
     help=(
-        "Compute device. 'auto' uses CUDA if available, otherwise CPU."
+        "Compute device. 'auto' uses Apple Silicon GPU (mps) on M-series Macs, "
+        "CUDA if available, otherwise CPU. 'mps' forces the mlx-whisper backend "
+        "(requires: uv sync --extra mlx)."
     ),
 )
 @click.option(
@@ -117,6 +124,17 @@ def cli() -> None:
     ),
 )
 @click.option(
+    "--num-threads",
+    "num_threads",
+    default=4,
+    show_default=True,
+    type=int,
+    help=(
+        "Maximum CPU threads for faster-whisper (CPU/CUDA backends only). "
+        "Defaults to 4 to avoid pegging all cores. Ignored on Apple Silicon (mps)."
+    ),
+)
+@click.option(
     "--log",
     "enable_log",
     is_flag=True,
@@ -139,6 +157,7 @@ def transcribe(
     device: str,
     compute_type: str,
     beam_size: int,
+    num_threads: int,
     quiet: bool,
     vad_filter: bool,
     enable_log: bool,
@@ -188,12 +207,37 @@ def transcribe(
     # Check ffmpeg before doing any work
     check_ffmpeg()
 
+    # Prevent multiple concurrent transcription processes
+    if not acquire_run_lock():
+        from youtube_transcriber.utils import _LOCK_FILE
+        raise click.ClickException(
+            "Another youtube-transcriber process is already running.\n"
+            "Only one transcription can run at a time to avoid excessive CPU/memory usage.\n"
+            f"If no process is actually running, delete {_LOCK_FILE} and retry."
+        )
+
+    # Resolve the device early so we can display it in the banner
+    from youtube_transcriber.utils import detect_device, is_apple_silicon
+    resolved_device = detect_device() if device == "auto" else device.lower()
+
+    _DEVICE_LABELS: dict[str, str] = {
+        "mps":  "Apple Silicon GPU  [MLX / Metal + Neural Engine]",
+        "cuda": "NVIDIA GPU  [CUDA / faster-whisper]",
+        "cpu":  "CPU  [faster-whisper]",
+    }
+    device_label = _DEVICE_LABELS.get(resolved_device, resolved_device)
+
     if verbose:
         click.echo(f"youtube-transcriber v{__version__}", err=True)
         click.echo(f"  URL:    {url}", err=True)
         click.echo(f"  Model:  {model}", err=True)
         click.echo(f"  Format: {output_format}", err=True)
-        click.echo(f"  Device: {device}", err=True)
+        click.echo(f"  Device: {device_label}", err=True)
+        if resolved_device == "mps" and not is_apple_silicon():
+            click.echo(
+                "  Warning: --device mps requested but Apple Silicon was not detected.",
+                err=True,
+            )
         click.echo("", err=True)
         click.echo("[ Step 1/2 ] Downloading audio...", err=True)
 
@@ -210,9 +254,10 @@ def transcribe(
             result = transcribe_audio(
                 audio_path,
                 model_name=model,
-                device=device,
+                device=resolved_device,
                 compute_type=compute_type,
                 beam_size=beam_size,
+                num_threads=num_threads,
                 vad_filter=vad_filter,
                 verbose=verbose,
             )
@@ -223,6 +268,8 @@ def transcribe(
 
     except SystemExit:
         sys.exit(1)
+    finally:
+        release_run_lock()
 
     # Format the transcript
     formatter = FORMAT_FUNCTIONS[output_format]

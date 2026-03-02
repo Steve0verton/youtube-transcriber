@@ -41,8 +41,12 @@ brew install node
 git clone https://github.com/Steve0verton/youtube-transcriber.git
 cd youtube-transcriber
 
-# Install dependencies into a local virtual environment
+# Install base dependencies
 uv sync
+
+# Apple Silicon (M1/M2/M3/M4) users: ALSO install the mlx extra for GPU acceleration
+# This enables mlx-whisper which uses the Metal GPU and Apple Neural Engine
+uv sync --extra mlx
 
 # Verify it works
 uv run youtube-transcriber --help
@@ -54,7 +58,11 @@ Installing as a global tool puts `youtube-transcriber` on your PATH so Claude
 can call it directly without needing to `cd` into the project directory first:
 
 ```bash
+# Standard install
 uv tool install .
+
+# Apple Silicon: include the mlx GPU extra
+uv tool install . --with mlx-whisper
 
 # Verify the global install
 youtube-transcriber --help
@@ -78,6 +86,10 @@ youtube-transcriber transcribe "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --m
 You should see progress messages on screen followed by the transcript text.
 A successful run means everything is correctly installed.
 
+> **Apple Silicon GPU:** On M-series Macs with the `mlx` extra installed, you will see
+> `Loading model 'tiny' on Apple Silicon GPU (Metal/ANE)...` in the progress output.
+> This confirms the Metal GPU is being used instead of CPU.
+
 > **First run of any model:** Whisper model weights are downloaded from HuggingFace
 > on first use and cached at `~/.cache/huggingface/hub/`. Subsequent runs using the
 > same model are instant. Model sizes range from ~75 MB (tiny) to ~800 MB (turbo)
@@ -99,7 +111,8 @@ You have access to a local CLI tool called `youtube-transcriber` installed on th
 
 TOOL: youtube-transcriber
 PURPOSE: Downloads and transcribes YouTube videos locally using Whisper AI.
-Runs entirely offline after the initial model download — no API keys needed.
+On Apple Silicon Macs (M-series), it uses the Metal GPU via mlx-whisper for fast,
+hardware-accelerated transcription. Runs entirely offline after initial model download.
 
 USAGE:
   youtube-transcriber transcribe "<youtube-url>"                   # transcript to stdout
@@ -108,7 +121,7 @@ USAGE:
   youtube-transcriber transcribe "<youtube-url>" --format json     # with timestamps
   youtube-transcriber transcribe "<youtube-url>" --format srt      # subtitle format
   youtube-transcriber transcribe "<youtube-url>" --output out.txt  # save to file
-  youtube-transcriber transcribe "<youtube-url>" --vad             # VAD filter (speech-only)
+  youtube-transcriber transcribe "<youtube-url>" --vad             # VAD filter (speech-only, CPU/CUDA only)
   youtube-transcriber transcribe "<youtube-url>" --log             # enable debug log
   youtube-transcriber models                                        # list available models
 
@@ -117,16 +130,25 @@ WHEN TO USE:
 - User says "transcribe this", "summarize this video", "what does this video say"
 - Any request that involves understanding or extracting content from a YouTube video
 
+CRITICAL: NEVER run more than one transcription at a time. Only one instance of
+youtube-transcriber may run simultaneously. A second process will be immediately
+blocked with an error. Wait for the first to complete before starting another.
+
 BEHAVIOR:
 - Run the command, capture the transcript, then analyze or summarize as requested
 - Default model is "turbo" — good balance of speed and quality
-- Use "--model large-v3" if the user asks for higher accuracy (requires ~10 GB VRAM or RAM)
+- On Apple Silicon (M-series Macs), the --device flag defaults to "mps" which uses
+  the Metal GPU and Apple Neural Engine via mlx-whisper. This is much faster than CPU
+  and avoids fan noise / system overload. No extra flag needed — it's automatic.
+- Use "--model large-v3" if the user asks for higher accuracy
 - Always use "--quiet" when you want to capture only the clean transcript text
-- Do NOT use "--vad" for music videos or any video with background audio — it will discard
-  the entire audio track. Only use "--vad" for clean speech (podcasts, lectures, interviews)
-- First use of a new model downloads it from HuggingFace (~75 MB for tiny, ~800 MB for turbo)
-  — warn the user this may take a moment on first use
-- If transcription returns empty or suspiciously short output, retry with --log to diagnose
+- For LONG videos (sermons, lectures, podcasts over 30 min): ask the user if they
+  would like you to open a Terminal window to monitor progress, then do so with:
+    osascript -e 'tell app "Terminal" to do script "youtube-transcriber transcribe \"<url>\" --output /tmp/transcript.txt"'
+  Then read /tmp/transcript.txt once complete.
+- Do NOT use "--vad" for music videos or any video with background audio
+- First use of a new model downloads it from HuggingFace — warn the user
+- If transcription returns empty or suspiciously short output, retry with --log
 ```
 
 ---
@@ -221,8 +243,10 @@ activity is the initial YouTube download and (on first use) the Whisper model do
 | Save to file | `youtube-transcriber transcribe "<url>" --output transcript.txt` |
 | SRT subtitles | `youtube-transcriber transcribe "<url>" --format srt` |
 | JSON with timestamps | `youtube-transcriber transcribe "<url>" --format json` |
-| Force CPU | `youtube-transcriber transcribe "<url>" --device cpu` |
-| VAD filtering (speech-only recordings) | `youtube-transcriber transcribe "<url>" --vad` |
+| Force Apple GPU (mps) | `youtube-transcriber transcribe "<url>" --device mps` |
+| Force CPU (no GPU) | `youtube-transcriber transcribe "<url>" --device cpu` |
+| Limit CPU threads | `youtube-transcriber transcribe "<url>" --device cpu --num-threads 2` |
+| VAD filtering (speech-only, CPU/CUDA) | `youtube-transcriber transcribe "<url>" --vad` |
 | Debug log (default path) | `youtube-transcriber transcribe "<url>" --log` |
 | Debug log (custom path) | `youtube-transcriber transcribe "<url>" --log-file /tmp/debug.log` |
 | List all models | `youtube-transcriber models` |
@@ -231,7 +255,7 @@ activity is the initial YouTube download and (on first use) the Whisper model do
 
 ## Model Selection Guide
 
-| Model | VRAM / RAM | Speed | Notes |
+| Model | Size | Speed | Notes |
 |---|---|---|---|
 | `tiny` | ~1 GB | Fastest | Good for quick tests |
 | `base` | ~1 GB | Very fast | |
@@ -240,10 +264,23 @@ activity is the initial YouTube download and (on first use) the Whisper model do
 | `turbo` | ~6 GB | Fast | **Default** — optimized large-v3, 8× faster |
 | `large-v3` | ~10 GB | Slow | Highest accuracy |
 
-On a MacBook with Apple Silicon (M1/M2/M3/M4), faster-whisper uses the CPU with
-`int8` quantization by default. GPU acceleration via Metal is not yet supported by
-faster-whisper — for GPU-accelerated transcription on Apple Silicon, consider
-`whisper.cpp` as an alternative backend.
+**Apple Silicon (M-series) — GPU acceleration via MLX:**
+
+With `uv sync --extra mlx` installed, the tool automatically uses `mlx-whisper`
+which runs on the Metal GPU and Apple Neural Engine. This is dramatically faster
+than CPU-only and keeps fans quiet:
+
+| Mac | CPU-only (faster-whisper) | GPU (mlx-whisper) |
+|---|---|---|
+| M4 Pro | ~27 load avg, fans loud | Metal GPU, fans quiet |
+| Device flag | `--device cpu` | `--device mps` (default on Apple Silicon) |
+
+GPU acceleration via Metal is provided by the MLX framework (Apple's machine
+learning framework for Apple Silicon). The `mlx-metal` package is installed
+automatically with `uv sync --extra mlx`.
+
+> **Note:** `faster-whisper` (the CPU backend) uses CTranslate2 which only
+> supports CUDA GPUs — it always falls back to CPU on Apple Silicon.
 
 ---
 
@@ -255,8 +292,8 @@ cd youtube-transcriber
 # Pull the latest changes
 git pull
 
-# Reinstall as global tool to pick up any updates
-uv tool install . --force
+# Reinstall as global tool to pick up any updates (Apple Silicon: include mlx)
+uv tool install . --with mlx-whisper --force
 ```
 
 ---
@@ -274,6 +311,36 @@ Or use the full path: `~/.local/bin/youtube-transcriber`
 ### "ffmpeg is not installed"
 ```bash
 brew install ffmpeg
+```
+
+### CPU is pegged / fans blowing on Apple Silicon
+
+This happens when the `mlx` extra is not installed and `faster-whisper` falls back
+to CPU with all available threads. Fix:
+
+```bash
+# In project directory:
+uv sync --extra mlx
+
+# OR if installed as a global tool:
+uv tool install . --with mlx-whisper --force
+```
+
+Verify the GPU is being used by looking for this line in the progress output:
+```
+Loading model 'turbo' on Apple Silicon GPU (Metal/ANE)...
+```
+
+If you still see `Loading model '...' on CPU`, the mlx extra is not in the active
+environment.
+
+### "Another youtube-transcriber process is already running"
+
+The tool prevents parallel instances to avoid overloading the system. Wait for the
+current transcription to finish. If no process is actually running (e.g. a previous
+run crashed), delete the stale lock file:
+```bash
+rm /tmp/youtube-transcriber.lock
 ```
 
 ### Transcript returns 0 segments or is completely empty
@@ -315,6 +382,9 @@ youtube-transcriber transcribe "<url>" --cookies-from-browser chrome
 > or yt-dlp docs for passing extra yt-dlp options.
 
 ### Transcription is slow
+- **Apple Silicon:** Install the `mlx` extra (`uv sync --extra mlx`) — the Metal GPU
+  backend is dramatically faster than CPU. Watch for `Apple Silicon GPU (Metal/ANE)`
+  in the progress output to confirm it's active.
 - First run downloads the model — subsequent runs are much faster
 - Switch to a smaller model: `--model small` or `--model tiny`
 - Make sure you're not running other heavy processes simultaneously

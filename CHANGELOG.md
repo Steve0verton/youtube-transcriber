@@ -5,6 +5,46 @@ All notable changes to the "YouTube Transcriber" will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-03-02
+
+### Added
+
+- **Apple Silicon GPU acceleration via `mlx-whisper`** — on M-series Macs the tool
+  now automatically uses `mlx-whisper` (Apple's MLX framework) instead of
+  `faster-whisper`. This routes transcription through the Metal GPU and Apple Neural
+  Engine, delivering dramatically faster results (a 63-minute video in ~22 seconds)
+  with no CPU overload, no fan noise. Requires the new optional dependency group:
+  `uv sync --extra mlx` (or `uv tool install . --with mlx-whisper`).
+- `is_apple_silicon()` utility — detects arm64 macOS via `platform.machine()`.
+- `MLX_MODEL_REPOS` mapping in `transcriber.py` — maps all user-facing model names
+  to their `mlx-community/` HuggingFace repos for automatic download on first use.
+- `_transcribe_mlx()` private function — full MLX transcription backend that returns
+  a `TranscriptResult` using the same data contract as the faster-whisper backend.
+- `--device mps` option — explicitly selects the MLX backend; `auto` now resolves
+  to `mps` on Apple Silicon, `cuda` on NVIDIA GPUs, then `cpu`.
+- `--num-threads INTEGER` option — caps the number of CPU threads faster-whisper may
+  use (default: 4). Prevents pegging all cores on non-Apple-Silicon machines.
+  Ignored when using the MLX backend.
+- **Process-level run lock** — `acquire_run_lock()` / `release_run_lock()` in
+  `utils.py` write a PID file to `/tmp/youtube-transcriber.lock`. The CLI checks the
+  lock at startup and exits immediately with a clear error if another instance is
+  already running, preventing multiple parallel transcriptions from overwhelming
+  system resources.
+- `mlx = ["mlx-whisper>=0.4.0"]` optional dependency group in `pyproject.toml`.
+
+### Changed
+
+- `detect_device()` now returns `"mps"` on Apple Silicon instead of `"cpu"`.
+  The faster-whisper path (cuda/cpu) is used only on non-Apple-Silicon machines.
+- `transcribe_audio()` now accepts `num_threads` parameter (default 4) and routes
+  to `_transcribe_mlx()` when `resolved_device == "mps"`.
+- `--device` CLI option now includes `mps` as a valid choice alongside `auto`,
+  `cuda`, and `cpu`.
+- Updated `docs/setup-claude-desktop.md`: install instructions for `mlx` extra,
+  revised system prompt with parallel-run warning and Terminal monitoring guidance,
+  expanded model selection table with Apple Silicon GPU notes, new troubleshooting
+  sections for CPU pegging and process lock errors.
+
 ## [0.1.1] - 2026-03-02
 
 ### Fixed
