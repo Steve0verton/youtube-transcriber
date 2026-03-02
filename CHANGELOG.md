@@ -5,6 +5,56 @@ All notable changes to the "YouTube Transcriber" will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-03-02
+
+### Fixed
+
+- **VAD filter was hardcoded `True`, causing 0 segments on all mixed-audio content.**
+  The Silero VAD model classifies music, background audio, and mixed content as
+  non-speech and silently discards it before Whisper runs. Any YouTube video with
+  background music (including music videos, videos with intros, etc.) returned an
+  empty transcript with no error. VAD is now **off by default** and must be
+  explicitly opted into via `--vad`.
+- yt-dlp `js_runtimes` was passed as a CLI string (`"node:/path/to/node"`) instead
+  of the Python API dict format (`{"node": {"path": "..."}}`), raising a `ValueError`
+  crash when the JS runtime fix was first applied.
+- Node.js runtime discovery now probes well-known absolute paths (Homebrew, nvm
+  version directories, Volta, fnm) as fallbacks when `shutil.which` cannot find a
+  runtime. This ensures yt-dlp JS challenge solving works when the tool is invoked
+  from non-interactive contexts (e.g. Claude Desktop) that do not source shell
+  config files and therefore lack nvm/volta PATH injections.
+
+### Added
+
+- `--vad` flag — opt-in Voice Activity Detection pre-filtering for clean speech
+  recordings (talks, podcasts, interviews with no background audio). Removes silence
+  and speeds up transcription. **Do not use for music videos or mixed-audio content.**
+- `--log` flag — enables structured debug logging to the default path
+  (`~/.local/share/youtube-transcriber/debug.log`) using a rotating file handler
+  (5 MB × 3 backups).
+- `--log-file FILE` flag — same as `--log` but writes to a user-specified path.
+- `src/youtube_transcriber/logging_config.py` — new module providing `setup_logging()`
+  for consistent file-based debug logging; suppresses noisy third-party loggers.
+- Debug `log.*` calls throughout `downloader.py` and `transcriber.py` (JS runtime
+  selection, yt-dlp options and download result, VAD decisions, model load,
+  per-segment output).
+- `docs/lessons-learned/2026-03-02-vad-and-nodejs-fixes.md` — post-mortem covering
+  the VAD silence bug, the Node.js runtime issues, and the role debug logging played
+  in diagnosing both.
+
+### Changed
+
+- `transcribe_audio()` signature gains a `vad_filter: bool = False` parameter;
+  VAD parameters (`threshold`, `min_speech_duration_ms`, `speech_pad_ms`, etc.) are
+  only applied when `vad_filter=True`.
+- `_find_js_runtime()` in `downloader.py` now returns a `dict` (Python API format)
+  instead of a string; probes PATH first, then falls back through a curated list of
+  absolute install locations.
+- Node.js (`brew install node`) added to documented system requirements; install
+  instructions updated in README and setup guide to recommend Homebrew over nvm.
+- README features callout and `--vad` usage section now include a content-type
+  decision table to prevent misuse on mixed-audio content.
+
 ## [0.1.0] - 2026-03-02
 
 ### Added

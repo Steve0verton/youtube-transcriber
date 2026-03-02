@@ -25,6 +25,11 @@ source ~/.zshrc   # or ~/.bashrc for bash users
 
 # Install ffmpeg — required by yt-dlp for audio extraction
 brew install ffmpeg
+
+# Install Node.js — required by yt-dlp to solve YouTube's JS challenges
+# IMPORTANT: use Homebrew, not nvm. macOS GUI apps (Claude Desktop) launch
+# without a full shell, so nvm-managed runtimes won't be found automatically.
+brew install node
 ```
 
 ---
@@ -103,6 +108,8 @@ USAGE:
   youtube-transcriber transcribe "<youtube-url>" --format json     # with timestamps
   youtube-transcriber transcribe "<youtube-url>" --format srt      # subtitle format
   youtube-transcriber transcribe "<youtube-url>" --output out.txt  # save to file
+  youtube-transcriber transcribe "<youtube-url>" --vad             # VAD filter (speech-only)
+  youtube-transcriber transcribe "<youtube-url>" --log             # enable debug log
   youtube-transcriber models                                        # list available models
 
 WHEN TO USE:
@@ -115,8 +122,11 @@ BEHAVIOR:
 - Default model is "turbo" — good balance of speed and quality
 - Use "--model large-v3" if the user asks for higher accuracy (requires ~10 GB VRAM or RAM)
 - Always use "--quiet" when you want to capture only the clean transcript text
+- Do NOT use "--vad" for music videos or any video with background audio — it will discard
+  the entire audio track. Only use "--vad" for clean speech (podcasts, lectures, interviews)
 - First use of a new model downloads it from HuggingFace (~75 MB for tiny, ~800 MB for turbo)
   — warn the user this may take a moment on first use
+- If transcription returns empty or suspiciously short output, retry with --log to diagnose
 ```
 
 ---
@@ -212,6 +222,9 @@ activity is the initial YouTube download and (on first use) the Whisper model do
 | SRT subtitles | `youtube-transcriber transcribe "<url>" --format srt` |
 | JSON with timestamps | `youtube-transcriber transcribe "<url>" --format json` |
 | Force CPU | `youtube-transcriber transcribe "<url>" --device cpu` |
+| VAD filtering (speech-only recordings) | `youtube-transcriber transcribe "<url>" --vad` |
+| Debug log (default path) | `youtube-transcriber transcribe "<url>" --log` |
+| Debug log (custom path) | `youtube-transcriber transcribe "<url>" --log-file /tmp/debug.log` |
 | List all models | `youtube-transcriber models` |
 
 ---
@@ -262,6 +275,36 @@ Or use the full path: `~/.local/bin/youtube-transcriber`
 ```bash
 brew install ffmpeg
 ```
+
+### Transcript returns 0 segments or is completely empty
+
+The most common cause is the VAD (Voice Activity Detection) filter silently discarding
+audio it classifies as non-speech — music, sound effects, and background audio all
+trigger this. Enable debug logging to confirm:
+
+```bash
+youtube-transcriber transcribe "<url>" --model tiny --log
+```
+
+If the log at `~/.local/share/youtube-transcriber/debug.log` shows:
+```
+VAD filter removed Xm Xs of audio
+```
+This is the cause. Do **not** use `--vad`. The default (no flag) processes all audio
+regardless of content and works correctly for music videos and mixed audio.
+
+### yt-dlp JavaScript runtime warning
+
+If you see `No supported JavaScript runtime could be found`, Node.js is not on the
+system PATH. On macOS, ensure it is installed via Homebrew:
+
+```bash
+brew install node
+```
+
+Do **not** use nvm, volta, or fnm for this — shell-level version managers only inject
+PATH in interactive terminal sessions. Claude Desktop and other GUI apps launch without
+a full shell and will not find runtimes managed this way.
 
 ### "yt-dlp: ERROR: Sign in to confirm you're not a bot"
 YouTube is rate-limiting the download. Try passing your browser cookies:

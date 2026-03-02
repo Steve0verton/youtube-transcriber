@@ -6,11 +6,14 @@ structured results with per-segment timestamps.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
 import click
+
+log = logging.getLogger(__name__)
 
 # Valid model names accepted by faster-whisper / Hugging Face
 ModelSize = Literal[
@@ -95,6 +98,7 @@ def transcribe_audio(
     device: str = "auto",
     compute_type: str = "auto",
     beam_size: int = 5,
+    vad_filter: bool = False,
     verbose: bool = True,
 ) -> TranscriptResult:
     """Transcribe an audio file using faster-whisper.
@@ -110,6 +114,9 @@ def transcribe_audio(
         compute_type: Quantization type — "auto", "float16", "int8_float16", "int8".
             "auto" selects float16 for CUDA, int8 for CPU.
         beam_size: Beam size for beam search decoding (higher = more accurate, slower).
+        vad_filter: Enable Silero VAD pre-filtering to strip silence before transcribing.
+            Speeds up speech-only recordings (talks, podcasts) but will discard speech
+            that is mixed with music or background audio. Disabled by default.
         verbose: If True, write progress messages to stderr.
 
     Returns:
@@ -149,9 +156,14 @@ def transcribe_audio(
             device=resolved_device,
             compute_type=resolved_compute_type,
         )
+        log.debug(
+            "Loaded model: name=%s device=%s compute_type=%s",
+            model_name, resolved_device, resolved_compute_type,
+        )
     except Exception as exc:
         # GPU may have insufficient VRAM — suggest fallback
         if resolved_device == "cuda":
+            log.warning("GPU error loading model '%s': %s — retrying on CPU", model_name, exc)
             click.echo(
                 f"  Warning: GPU error ({exc}). Retrying on CPU...",
                 err=True,
@@ -159,21 +171,43 @@ def transcribe_audio(
             model = WhisperModel(model_name, device="cpu", compute_type="int8")
             resolved_device = "cpu"
         else:
+            log.exception("Failed to load Whisper model '%s' on device=%s", model_name, resolved_device)
             raise click.ClickException(f"Failed to load Whisper model: {exc}") from exc
 
     if verbose:
         click.echo("  Transcribing... (this may take a while for large files)", err=True)
 
     try:
-        segments_iter, info = model.transcribe(
-            str(audio_path),
-            beam_size=beam_size,
-            vad_filter=True,           # skip silence (faster)
-            vad_parameters={"min_silence_duration_ms": 500},
+        log.debug(
+            "Starting transcription: path=%s beam_size=%d vad_filter=%s audio_size=%.1f MB",
+            audio_path, beam_size, vad_filter, audio_path.stat().st_size / 1_048_576,
+        )
+
+        transcribe_kwargs: dict = {
+            "beam_size": beam_size,
+            "vad_filter": vad_filter,
+        }
+        if vad_filter:
+            transcribe_kwargs["vad_parameters"] = {
+                # Lower threshold = more sensitive (catches quieter / music-mixed speech).
+                "threshold": 0.3,
+                # Minimum duration of a detected speech chunk (ms)
+                "min_speech_duration_ms": 250,
+                # Gap of silence required to split segments (ms)
+                "min_silence_duration_ms": 500,
+                # Padding added around each speech chunk (ms)
+                "speech_pad_ms": 400,
+            }
+
+        segments_iter, info = model.transcribe(str(audio_path), **transcribe_kwargs)
+        log.debug(
+            "faster-whisper info: language=%s language_prob=%.3f duration=%.1fs",
+            info.language, info.language_probability, info.duration,
         )
 
         segments: list[TranscriptSegment] = []
         for seg in segments_iter:
+            log.debug("Segment [%.2f–%.2f]: %r", seg.start, seg.end, seg.text)
             segments.append(
                 TranscriptSegment(
                     start=seg.start,
@@ -201,4 +235,5 @@ def transcribe_audio(
         return result
 
     except Exception as exc:
+        log.exception("Transcription failed for path=%s", audio_path)
         raise click.ClickException(f"Transcription failed: {exc}") from exc

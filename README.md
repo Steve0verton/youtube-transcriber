@@ -19,21 +19,48 @@ A local, privacy-preserving CLI tool that downloads audio from YouTube videos an
 
 ---
 
+> ### ⚠️ VAD flag: read before using with any video
+>
+> The `--vad` flag enables Voice Activity Detection pre-filtering. It silently discards
+> anything it classifies as "not speech" — including music, background audio, and
+> mixed content. **Using `--vad` on a music video or any video with background audio
+> will result in 0 transcript segments.**
+>
+> | Content type | Use `--vad`? |
+> |---|---|
+> | Music video | ❌ Never — entire track discarded |
+> | YouTube video with intro music or background audio | ❌ No |
+> | Lecture, talk, podcast (voice only, no music) | ✅ Yes — removes silence, speeds up transcription |
+> | Interview in a quiet room | ✅ Generally safe |
+>
+> **Default: `--vad` is OFF.** Omit the flag for any video with music or mixed audio.
+> If you get 0 segments, run with `--log` — look for `VAD filter removed Xm Xs of audio`.
+
+---
+
 ## Requirements
 
 - **Python 3.10+**
 - **[ffmpeg](https://ffmpeg.org/download.html)** — required by yt-dlp for audio extraction
 - **[uv](https://docs.astral.sh/uv/)** — recommended for installation and running
+- **[Node.js](https://nodejs.org/)** — required by yt-dlp to solve YouTube's JS challenges and extract audio formats reliably
 
-Install ffmpeg (Ubuntu/Debian):
+Install system dependencies (Ubuntu/Debian):
+
 ```bash
-sudo apt install ffmpeg
+sudo apt install ffmpeg nodejs
 ```
 
-Install ffmpeg (macOS):
+Install system dependencies (macOS):
+
 ```bash
-brew install ffmpeg
+brew install ffmpeg node
 ```
+
+> **macOS note:** Install Node.js via Homebrew (`brew install node`), not nvm.
+> macOS GUI apps (including Claude Desktop) launch without a full shell environment,
+> so nvm-managed runtimes may not be found. Homebrew puts node at a fixed system path
+> (`/opt/homebrew/bin/node`) that is always accessible.
 
 ---
 
@@ -110,6 +137,34 @@ youtube-transcriber transcribe <url> --format srt --output subtitles.srt
 
 ```bash
 youtube-transcriber transcribe <url> --device cpu
+```
+
+### VAD pre-filtering — speech-only content only
+
+Default: **off.** Only enable for recordings where the full audio is clean speech
+with no background music or effects.
+
+```bash
+# Safe: podcast, lecture, interview — no background music
+youtube-transcriber transcribe <url> --vad
+
+# WRONG — never use --vad with music videos, intros, or background audio
+# The VAD model will classify the entire track as non-speech and return nothing
+```
+
+See the [VAD callout above](#️-vad-flag-read-before-using-with-any-video) for a full content-type decision table.
+
+### Debug logging
+
+When a transcription produces unexpected results (0 segments, wrong language, etc.),
+enable debug logging to see exactly what yt-dlp and faster-whisper are doing.
+
+```bash
+# Log to the default path (~/.local/share/youtube-transcriber/debug.log)
+youtube-transcriber transcribe <url> --log
+
+# Log to a custom file
+youtube-transcriber transcribe <url> --log-file /tmp/yt-debug.log
 ```
 
 ### List available models
@@ -196,11 +251,49 @@ youtube-transcriber CLI (click)
 
 ---
 
+## Troubleshooting
+
+### Transcript returns 0 segments
+
+The most common cause is the VAD filter being enabled on content with background audio.
+Run with `--log` to see what faster-whisper is actually doing:
+
+```bash
+youtube-transcriber transcribe <url> --model tiny --log
+```
+
+If the log contains `VAD filter removed Xm Xs of audio`, you have a VAD issue.
+Do **not** use `--vad` for music videos or any content with background audio.
+
+### yt-dlp JavaScript runtime warning
+
+If you see `No supported JavaScript runtime could be found`, Node.js is either
+not installed or not on the system PATH. Install it via your system package manager:
+
+```bash
+brew install node       # macOS
+sudo apt install nodejs # Ubuntu/Debian
+```
+
+Avoid nvm or other shell-level version managers for deployments where the tool is
+invoked non-interactively (e.g., by Claude Desktop).
+
+### yt-dlp bot detection error
+
+YouTube is rate-limiting the download. Try passing browser cookies:
+
+```bash
+youtube-transcriber transcribe "<url>" --cookies-from-browser chrome
+```
+
+---
+
 ## Documentation
 
 | Doc | Description |
 |---|---|
 | [setup-claude-desktop.md](docs/setup-claude-desktop.md) | Install on a new machine and configure Claude Desktop |
+| [lessons-learned/2026-03-02-vad-and-nodejs-fixes.md](docs/lessons-learned/2026-03-02-vad-and-nodejs-fixes.md) | VAD silence bug and Node.js runtime discovery |
 
 ---
 

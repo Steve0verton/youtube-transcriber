@@ -9,6 +9,7 @@ Commands:
 
 from __future__ import annotations
 
+import logging
 import sys
 from pathlib import Path
 
@@ -16,8 +17,11 @@ import click
 
 from youtube_transcriber import __version__
 from youtube_transcriber.formatters import FORMAT_FUNCTIONS
+from youtube_transcriber.logging_config import DEFAULT_LOG_PATH, setup_logging
 from youtube_transcriber.transcriber import AVAILABLE_MODELS, DEFAULT_MODEL
 from youtube_transcriber.utils import check_ffmpeg, is_youtube_url
+
+log = logging.getLogger(__name__)
 
 
 @click.group()
@@ -100,6 +104,33 @@ def cli() -> None:
     default=False,
     help="Suppress all progress output (stderr). Only the transcript is printed.",
 )
+@click.option(
+    "--vad",
+    "vad_filter",
+    is_flag=True,
+    default=False,
+    help=(
+        "Enable Silero VAD pre-filtering to skip silent passages. "
+        "Speeds up speech-only recordings (talks, podcasts, interviews) but will "
+        "discard speech mixed with music or background audio. "
+        "Do NOT use for music videos or audio with background sound."
+    ),
+)
+@click.option(
+    "--log",
+    "enable_log",
+    is_flag=True,
+    default=False,
+    help=f"Enable debug logging to the default log file ({DEFAULT_LOG_PATH}).",
+)
+@click.option(
+    "--log-file",
+    "log_path",
+    default=None,
+    type=click.Path(dir_okay=False, writable=True, path_type=Path),
+    metavar="FILE",
+    help="Enable debug logging and write to FILE instead of the default path.",
+)
 def transcribe(
     url: str,
     model: str,
@@ -109,6 +140,9 @@ def transcribe(
     compute_type: str,
     beam_size: int,
     quiet: bool,
+    vad_filter: bool,
+    enable_log: bool,
+    log_path: Path | None,
 ) -> None:
     """Download and transcribe a YouTube video.
 
@@ -123,6 +157,17 @@ def transcribe(
       youtube-transcriber transcribe "https://youtu.be/..." --quiet > transcript.txt
     """
     verbose = not quiet
+
+    # Enable debug logging if requested
+    if enable_log or log_path is not None:
+        resolved_log = setup_logging(log_path)
+        if verbose:
+            click.echo(f"Debug log: {resolved_log}", err=True)
+
+    log.debug(
+        "transcribe called: url=%s model=%s format=%s device=%s compute_type=%s beam_size=%d vad=%s",
+        url, model, output_format, device, compute_type, beam_size, vad_filter,
+    )
 
     # Validate URL
     if not is_youtube_url(url):
@@ -157,6 +202,7 @@ def transcribe(
 
     try:
         with download_audio(url, verbose=verbose) as audio_path:
+            log.debug("Audio downloaded to: %s (size=%d bytes)", audio_path, audio_path.stat().st_size)
             if verbose:
                 click.echo("", err=True)
                 click.echo("[ Step 2/2 ] Transcribing...", err=True)
@@ -167,7 +213,12 @@ def transcribe(
                 device=device,
                 compute_type=compute_type,
                 beam_size=beam_size,
+                vad_filter=vad_filter,
                 verbose=verbose,
+            )
+            log.debug(
+                "Transcription done: language=%s duration=%.1fs segments=%d",
+                result.language, result.duration, len(result.segments),
             )
 
     except SystemExit:
