@@ -1,4 +1,4 @@
-# youtube-transcriber
+# YouTube Transcriber
 
 A local, privacy-preserving CLI tool that downloads audio from YouTube videos and transcribes them using [faster-whisper](https://github.com/SYSTRAN/faster-whisper) — entirely on your machine. No cloud transcription, no API keys required. The transcript is written to stdout, ready to be piped into any LLM for analysis.
 
