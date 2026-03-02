@@ -1,0 +1,105 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+.installed.cfg
+lib/
+lib64/
+MANIFEST
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# uv
+.uv/
+# Note: uv.lock IS committed for this CLI application (reproducible installs).
+# Do not add uv.lock here.
+
+# pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+*.py,cover
+nosetests.xml
+
+# ruff
+.ruff_cache/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Jupyter
+.ipynb_checkpoints
+
+# Temp audio / transcript files produced during runs
+*.wav
+*.mp3
+*.m4a
+*.ogg
+*.flac
+*.webm
+*.opus
+transcript_*.txt
+transcript_*.srt
+transcript_*.vtt
+transcript_*.json
+
+# Model cache (large binary files — let the user download separately)
+# HuggingFace hub cache is at ~/.cache/huggingface/ — not in repo
+models/
+
+# API keys / secrets
+.env
+.env.local
+.env.*.local
+secrets.json
+config.local.toml
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*

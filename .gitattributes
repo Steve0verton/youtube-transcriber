@@ -1,0 +1,49 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Python source files — always LF
+*.py text eol=lf
+*.pyi text eol=lf
+
+# Config / data files — always LF
+*.toml text eol=lf
+*.yaml text eol=lf
+*.yml  text eol=lf
+*.json text eol=lf
+*.cfg  text eol=lf
+*.ini  text eol=lf
+*.txt  text eol=lf
+*.md   text eol=lf
+*.rst  text eol=lf
+
+# Shell scripts — always LF
+*.sh   text eol=lf
+
+# GitHub / repo files — always LF
+.gitignore      text eol=lf
+.gitattributes  text eol=lf
+
+# Subtitle / transcript output files — always LF
+*.srt  text eol=lf
+*.vtt  text eol=lf
+
+# Binary files — never diff / never convert
+*.wav  binary
+*.mp3  binary
+*.m4a  binary
+*.ogg  binary
+*.flac binary
+*.webm binary
+*.opus binary
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary
+*.zip  binary
+*.tar  binary
+*.gz   binary
+
+# Linguist overrides — keep GitHub language stats accurate
+*.toml linguist-language=TOML
