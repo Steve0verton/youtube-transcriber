@@ -196,6 +196,14 @@ youtube-transcriber CLI (click)
 
 ---
 
+## Documentation
+
+| Doc | Description |
+|---|---|
+| [setup-claude-desktop.md](docs/setup-claude-desktop.md) | Install on a new machine and configure Claude Desktop |
+
+---
+
 ## Contributing
 
 Pull requests are welcome. For major changes, open an issue first.
