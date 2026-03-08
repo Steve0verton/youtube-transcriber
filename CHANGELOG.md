@@ -5,6 +5,24 @@ All notable changes to the "YouTube Transcriber" will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-03-08
+
+### Changed
+
+- **Skill doc: polling must use `osascript`, not bare shell commands** — updated
+  `docs/youtube-transcribe.skill.md` to make clear that `/tmp/transcript.txt` lives
+  on the user's Mac, not inside the Claude container. Step 3 and the "Check if
+  complete and read" command pattern now use `osascript -e 'do shell script "..."'`
+  for both the word-count poll and the final `cat` read, with a prominent `CRITICAL`
+  warning explaining why bare bash commands will silently fail.
+- **macOS-only platform support documented** — added a top-of-file callout to
+  `docs/youtube-transcribe.skill.md` instructing the agent to stop and inform the
+  user if they are not on a Mac. Added a **Platform Support** section to `README.md`
+  explicitly stating that the LLM agent integration is macOS-only and that **Windows
+  is not supported**. Removed the Ubuntu/Debian `apt install` snippet from README
+  requirements (the CLI can still be run manually on Linux, but the agent skill is
+  Mac-specific).
+
 ## [0.2.0] - 2026-03-02
 
 ### Added
