@@ -106,7 +106,7 @@ call it. This persists across all conversations in Claude Desktop.
 
 Paste the following:
 
-```
+```text
 You have access to a local CLI tool called `youtube-transcriber` installed on this machine.
 
 TOOL: youtube-transcriber
@@ -160,7 +160,8 @@ This is useful if `youtube-transcriber` is not on the default PATH that Claude D
 sees (macOS GUI apps sometimes have a different PATH than your terminal).
 
 **Config file location (macOS):**
-```
+
+```text
 ~/Library/Application Support/Claude/claude_desktop_config.json
 ```
 
@@ -174,9 +175,11 @@ Open or create that file and add:
 
 > If you run into PATH issues (Claude can't find the `youtube-transcriber` command),
 > use the full absolute path instead. Find it by running:
-> ```bash
-> which youtube-transcriber
-> ```
+
+```bash
+which youtube-transcriber
+```
+
 > Then in your system prompt replace `youtube-transcriber` with the full path,
 > e.g. `/Users/yourname/.local/bin/youtube-transcriber`.
 
@@ -186,22 +189,23 @@ Open or create that file and add:
 
 Open Claude Desktop and try one of the following prompts:
 
-```
+```text
 Transcribe this YouTube video for me:
 https://www.youtube.com/watch?v=dQw4w9WgXcQ
 ```
 
-```
+```text
 Please summarize the key points from this video:
 https://youtu.be/dQw4w9WgXcQ
 ```
 
-```
+```text
 What does this YouTube video say? Give me a bullet-point summary:
 https://www.youtube.com/watch?v=dQw4w9WgXcQ
 ```
 
 Claude should:
+
 1. Run `youtube-transcriber transcribe "<url>" --quiet`
 2. Receive the transcript text
 3. Summarize or analyze it as requested
@@ -210,7 +214,7 @@ Claude should:
 
 ## How It Works Under the Hood
 
-```
+```text
 You ask Claude about a YouTube video
         │
         ▼
@@ -301,14 +305,18 @@ uv tool install . --with mlx-whisper --force
 ## Troubleshooting
 
 ### "command not found: youtube-transcriber"
+
 The global tool binary is not on your PATH. Run:
+
 ```bash
 uv tool update-shell
 source ~/.zshrc
 ```
+
 Or use the full path: `~/.local/bin/youtube-transcriber`
 
 ### "ffmpeg is not installed"
+
 ```bash
 brew install ffmpeg
 ```
@@ -327,7 +335,8 @@ uv tool install . --with mlx-whisper --force
 ```
 
 Verify the GPU is being used by looking for this line in the progress output:
-```
+
+```text
 Loading model 'turbo' on Apple Silicon GPU (Metal/ANE)...
 ```
 
@@ -339,6 +348,7 @@ environment.
 The tool prevents parallel instances to avoid overloading the system. Wait for the
 current transcription to finish. If no process is actually running (e.g. a previous
 run crashed), delete the stale lock file:
+
 ```bash
 rm /tmp/youtube-transcriber.lock
 ```
@@ -354,9 +364,11 @@ youtube-transcriber transcribe "<url>" --model tiny --log
 ```
 
 If the log at `~/.local/share/youtube-transcriber/debug.log` shows:
-```
+
+```text
 VAD filter removed Xm Xs of audio
 ```
+
 This is the cause. Do **not** use `--vad`. The default (no flag) processes all audio
 regardless of content and works correctly for music videos and mixed audio.
 
@@ -374,14 +386,18 @@ PATH in interactive terminal sessions. Claude Desktop and other GUI apps launch 
 a full shell and will not find runtimes managed this way.
 
 ### "yt-dlp: ERROR: Sign in to confirm you're not a bot"
+
 YouTube is rate-limiting the download. Try passing your browser cookies:
+
 ```bash
 youtube-transcriber transcribe "<url>" --cookies-from-browser chrome
 ```
+
 > Note: `--cookies-from-browser` is a yt-dlp option. See the downloader source
 > or yt-dlp docs for passing extra yt-dlp options.
 
 ### Transcription is slow
+
 - **Apple Silicon:** Install the `mlx` extra (`uv sync --extra mlx`) — the Metal GPU
   backend is dramatically faster than CPU. Watch for `Apple Silicon GPU (Metal/ANE)`
   in the progress output to confirm it's active.
@@ -390,5 +406,6 @@ youtube-transcriber transcribe "<url>" --cookies-from-browser chrome
 - Make sure you're not running other heavy processes simultaneously
 
 ### Claude doesn't use the tool automatically
+
 - Ensure the system prompt from Step 4 is saved in Claude Desktop settings
 - Try explicitly asking: *"Use the youtube-transcriber tool to transcribe this: \<url\>"*
