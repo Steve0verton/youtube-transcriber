@@ -1,5 +1,9 @@
 # Skill: YouTube Transcription
 
+> **Platform support: macOS only.**
+> This skill relies on `osascript` and the macOS Terminal application to run commands
+> on the user's machine. **Windows is currently not supported.** Linux support is not implemented in this skill. If the user is NOT on a Mac, stop and let them know.
+
 You have access to a local CLI tool called `youtube-transcriber` installed on the
 **user's Mac** (not in this container). This is a critical distinction that governs
 everything about how this skill should be executed.
@@ -67,15 +71,23 @@ This opens a visible Terminal window on the user's Mac. The user can watch:
 
 ### Step 3 -- Wait, then read the file
 
-Poll from bash_tool until the file is non-empty:
+**CRITICAL: Do NOT use bash_tool to poll `/tmp/transcript.txt` — that path is on the
+user's Mac filesystem, not inside the Claude container. bash_tool commands run in the
+container and will not see the file. You must use `osascript` to check and read the
+file.**
+
+Poll via osascript until the file is non-empty:
 
 ```bash
-# Check if done
-ls -lh /tmp/transcript.txt 2>/dev/null && wc -w /tmp/transcript.txt
+# Check word count on the Mac (returns 0 if empty or missing)
+osascript -e 'do shell script "wc -w /tmp/transcript.txt 2>/dev/null || echo 0"'
 
-# Read when complete
-cat /tmp/transcript.txt
+# Read the transcript from the Mac when complete
+osascript -e 'do shell script "cat /tmp/transcript.txt"'
 ```
+
+Repeat the word-count check every 15–30 seconds. When the count is greater than zero,
+read the full file with the `cat` variant above and proceed to Step 4.
 
 ### Step 4 -- Summarize or analyze
 
@@ -147,11 +159,17 @@ osascript -e 'tell application "Terminal" to do script "youtube-transcriber tran
 
 Log is written to: ~/.local/share/youtube-transcriber/debug.log
 
-### Check if complete and read (from bash_tool)
+### Check if complete and read (MUST use osascript — not bash_tool)
+
+`/tmp/transcript.txt` lives on the user's Mac. bash_tool runs inside the Claude
+container and cannot see it. Always use `osascript` to check and read the file:
 
 ```bash
-[ -s /tmp/transcript.txt ] && cat /tmp/transcript.txt || echo "Still running or failed"
-wc -w /tmp/transcript.txt
+# Poll: returns word count (0 = not done yet)
+osascript -e 'do shell script "wc -w /tmp/transcript.txt 2>/dev/null || echo 0"'
+
+# Read when done
+osascript -e 'do shell script "cat /tmp/transcript.txt"'
 ```
 
 ---

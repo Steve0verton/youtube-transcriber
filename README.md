@@ -38,20 +38,19 @@ A local, privacy-preserving CLI tool that downloads audio from YouTube videos an
 
 ---
 
+## Platform Support
+
+> **macOS only** — the LLM agent integration (osascript-based execution) is written for **macOS-only**.
+> **Windows is currently not supported.** Linux can run the CLI tool directly from a terminal, but the agent skill that drives automated transcription via `osascript` is not excplicitly tested on Linux and may require adjustments to work with different desktop environments.
+
+---
+
 ## Requirements
 
 - **Python 3.10+**
 - **[ffmpeg](https://ffmpeg.org/download.html)** — required by yt-dlp for audio extraction
 - **[uv](https://docs.astral.sh/uv/)** — recommended for installation and running
 - **[Node.js](https://nodejs.org/)** — required by yt-dlp to solve YouTube's JS challenges and extract audio formats reliably
-
-Install system dependencies (Ubuntu/Debian):
-
-```bash
-sudo apt install ffmpeg nodejs
-```
-
-Install system dependencies (macOS):
 
 ```bash
 brew install ffmpeg node
