@@ -1,6 +1,6 @@
 [project]
 name = "youtube-transcriber"
-version = "0.2.1"
+version = "0.2.2"
 description = "Download YouTube audio and transcribe locally using faster-whisper. Designed for LLM ingestion via CLI."
 readme = "README.md"
 license = { file = "LICENSE" }

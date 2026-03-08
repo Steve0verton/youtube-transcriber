@@ -52,16 +52,25 @@ Before running anything, say something like:
 
   "I'll run the transcription on your Mac -- it uses the Apple Silicon GPU so it
   should be fast and quiet. I'll open a Terminal window so you can watch progress.
-  The transcript will be saved to /tmp/transcript.txt."
+  The transcript will be saved to /tmp/transcript_<video_id>.txt."
 
 ### Step 2 -- Open a Terminal window on the Mac via osascript
+
+**Always include the video ID in the output filename.** Extract the 11-character video
+ID from the URL (e.g. `dQw4w9WgXcQ` from `youtu.be/dQw4w9WgXcQ` or `?v=dQw4w9WgXcQ`).
+This guarantees unique files when transcribing multiple videos in one prompt.
 
 Run these two commands via bash_tool:
 
 ```bash
 osascript -e 'tell application "Terminal" to activate'
-osascript -e 'tell application "Terminal" to do script "youtube-transcriber transcribe \"<url>\" --output /tmp/transcript.txt"'
+osascript -e 'tell application "Terminal" to do script "youtube-transcriber transcribe \"<url>\" --output /tmp/transcript_<video_id>.txt"'
 ```
+
+> **Auto-injection fallback:** If you pass a plain name like `--output /tmp/transcript.txt`,
+> the tool automatically renames the file to `/tmp/transcript_<video_id>.txt` so existing
+> transcripts are never overwritten. When running multiple videos, always use the video
+> ID explicitly so you know the exact path to poll.
 
 This opens a visible Terminal window on the user's Mac. The user can watch:
 - Device confirmation banner (Apple Silicon GPU  [MLX / Metal + Neural Engine])
@@ -71,19 +80,19 @@ This opens a visible Terminal window on the user's Mac. The user can watch:
 
 ### Step 3 -- Wait, then read the file
 
-**CRITICAL: Do NOT use bash_tool to poll `/tmp/transcript.txt` — that path is on the
+**CRITICAL: Do NOT use bash_tool to poll the transcript file — it lives on the
 user's Mac filesystem, not inside the Claude container. bash_tool commands run in the
 container and will not see the file. You must use `osascript` to check and read the
 file.**
 
-Poll via osascript until the file is non-empty:
+Poll via osascript until the file is non-empty (substitute the actual `<video_id>`):
 
 ```bash
 # Check word count on the Mac (returns 0 if empty or missing)
-osascript -e 'do shell script "wc -w /tmp/transcript.txt 2>/dev/null || echo 0"'
+osascript -e 'do shell script "wc -w /tmp/transcript_<video_id>.txt 2>/dev/null || echo 0"'
 
 # Read the transcript from the Mac when complete
-osascript -e 'do shell script "cat /tmp/transcript.txt"'
+osascript -e 'do shell script "cat /tmp/transcript_<video_id>.txt"'
 ```
 
 Repeat the word-count check every 15–30 seconds. When the count is greater than zero,
@@ -122,10 +131,12 @@ Tell the user to run in Terminal:
 uv tool install . --with mlx-whisper --force
 ```
 
-### 3. Always use --output with osascript
+### 3. Always use --output with the video ID in the filename
 
-Never run via osascript without --output /tmp/transcript.txt. If you omit it,
-the transcript prints to the Terminal window only -- you cannot read it from bash_tool.
+Never run via osascript without `--output /tmp/transcript_<video_id>.txt`. If you omit
+`--output`, the transcript prints to the Terminal window only — you cannot read it from
+bash_tool. Using the video ID in the filename ensures unique files when transcribing
+multiple videos in a single conversation.
 
 ### 4. Warn before starting long videos
 
@@ -138,38 +149,56 @@ For videos over ~20 minutes, say upfront:
 
 ## osascript Command Patterns
 
+In all patterns below, replace `<video_id>` with the 11-character YouTube video ID
+extracted from the URL (e.g. `dQw4w9WgXcQ`).
+
 ### Basic -- write to file, progress visible in Terminal
 
 ```bash
 osascript -e 'tell application "Terminal" to activate'
-osascript -e 'tell application "Terminal" to do script "youtube-transcriber transcribe \"<url>\" --output /tmp/transcript.txt"'
+osascript -e 'tell application "Terminal" to do script "youtube-transcriber transcribe \"<url>\" --output /tmp/transcript_<video_id>.txt"'
 ```
 
 ### With a specific model
 
 ```bash
-osascript -e 'tell application "Terminal" to do script "youtube-transcriber transcribe \"<url>\" --model large-v3 --output /tmp/transcript.txt"'
+osascript -e 'tell application "Terminal" to do script "youtube-transcriber transcribe \"<url>\" --model large-v3 --output /tmp/transcript_<video_id>.txt"'
 ```
 
 ### With debug logging (when something goes wrong)
 
 ```bash
-osascript -e 'tell application "Terminal" to do script "youtube-transcriber transcribe \"<url>\" --output /tmp/transcript.txt --log"'
+osascript -e 'tell application "Terminal" to do script "youtube-transcriber transcribe \"<url>\" --output /tmp/transcript_<video_id>.txt --log"'
 ```
 
 Log is written to: ~/.local/share/youtube-transcriber/debug.log
 
 ### Check if complete and read (MUST use osascript — not bash_tool)
 
-`/tmp/transcript.txt` lives on the user's Mac. bash_tool runs inside the Claude
-container and cannot see it. Always use `osascript` to check and read the file:
+`/tmp/transcript_<video_id>.txt` lives on the user's Mac. bash_tool runs inside the
+Claude container and cannot see it. Always use `osascript` to check and read the file:
 
 ```bash
 # Poll: returns word count (0 = not done yet)
-osascript -e 'do shell script "wc -w /tmp/transcript.txt 2>/dev/null || echo 0"'
+osascript -e 'do shell script "wc -w /tmp/transcript_<video_id>.txt 2>/dev/null || echo 0"'
 
 # Read when done
-osascript -e 'do shell script "cat /tmp/transcript.txt"'
+osascript -e 'do shell script "cat /tmp/transcript_<video_id>.txt"'
+```
+
+### Multiple videos in one prompt
+
+Run each transcription sequentially (the tool enforces a process lock — only one at a time).
+Each video gets its own file named by its video ID:
+
+```bash
+# Video 1
+osascript -e 'tell application "Terminal" to do script "youtube-transcriber transcribe \"<url1>\" --output /tmp/transcript_<id1>.txt"'
+# Poll until done, then read /tmp/transcript_<id1>.txt via osascript
+
+# Video 2
+osascript -e 'tell application "Terminal" to do script "youtube-transcriber transcribe \"<url2>\" --output /tmp/transcript_<id2>.txt"'
+# Poll until done, then read /tmp/transcript_<id2>.txt via osascript
 ```
 
 ---
@@ -177,23 +206,23 @@ osascript -e 'do shell script "cat /tmp/transcript.txt"'
 ## Full Command Reference
 
 ```bash
-# Default -- turbo model, plain text output
-youtube-transcriber transcribe "<url>" --output /tmp/transcript.txt
+# Default -- turbo model, plain text output (replace <video_id> with the actual ID)
+youtube-transcriber transcribe "<url>" --output /tmp/transcript_<video_id>.txt
 
 # Higher accuracy
-youtube-transcriber transcribe "<url>" --model large-v3 --output /tmp/transcript.txt
+youtube-transcriber transcribe "<url>" --model large-v3 --output /tmp/transcript_<video_id>.txt
 
 # JSON with per-segment timestamps
-youtube-transcriber transcribe "<url>" --format json --output /tmp/transcript.json
+youtube-transcriber transcribe "<url>" --format json --output /tmp/transcript_<video_id>.json
 
 # SRT subtitles
-youtube-transcriber transcribe "<url>" --format srt --output /tmp/transcript.srt
+youtube-transcriber transcribe "<url>" --format srt --output /tmp/transcript_<video_id>.srt
 
 # With debug logging
-youtube-transcriber transcribe "<url>" --output /tmp/transcript.txt --log
+youtube-transcriber transcribe "<url>" --output /tmp/transcript_<video_id>.txt --log
 
 # Force CPU (bypass GPU -- rarely needed)
-youtube-transcriber transcribe "<url>" --device cpu --output /tmp/transcript.txt
+youtube-transcriber transcribe "<url>" --device cpu --output /tmp/transcript_<video_id>.txt
 
 # List available models (safe to run via bash_tool -- no YouTube needed)
 youtube-transcriber models
@@ -206,8 +235,9 @@ youtube-transcriber models
 The Terminal window shows this progression:
 
 ```
-youtube-transcriber v0.2.0
-  URL:    https://www.youtube.com/watch?v=...
+youtube-transcriber v0.2.2
+  URL:    https://www.youtube.com/watch?v=dQw4w9WgXcQ
+  Video:  dQw4w9WgXcQ
   Model:  turbo
   Format: text
   Device: Apple Silicon GPU  [MLX / Metal + Neural Engine]   <- GPU confirmed
@@ -327,13 +357,13 @@ brew install node
 YouTube is rate-limiting. Run with browser cookies:
 
 ```bash
-youtube-transcriber transcribe "<url>" --cookies-from-browser chrome --output /tmp/transcript.txt
+youtube-transcriber transcribe "<url>" --cookies-from-browser chrome --output /tmp/transcript_<video_id>.txt
 ```
 
 ### When in doubt -- enable debug logging
 
 ```bash
-osascript -e 'tell application "Terminal" to do script "youtube-transcriber transcribe \"<url>\" --output /tmp/transcript.txt --log"'
+osascript -e 'tell application "Terminal" to do script "youtube-transcriber transcribe \"<url>\" --output /tmp/transcript_<video_id>.txt --log"'
 ```
 
 Then ask the user to share:

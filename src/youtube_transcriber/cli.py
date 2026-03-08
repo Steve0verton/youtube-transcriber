@@ -22,6 +22,7 @@ from youtube_transcriber.transcriber import AVAILABLE_MODELS, DEFAULT_MODEL
 from youtube_transcriber.utils import (
     acquire_run_lock,
     check_ffmpeg,
+    extract_video_id,
     is_youtube_url,
     release_run_lock,
 )
@@ -196,6 +197,15 @@ def transcribe(
             param_hint="URL",
         )
 
+    # Extract video ID for unique filenames
+    video_id = extract_video_id(url)
+
+    # Inject the video ID into the output filename stem so that transcribing
+    # multiple videos never silently overwrites the previous result.
+    # e.g. /tmp/transcript.txt  ->  /tmp/transcript_dQw4w9WgXcQ.txt
+    if output_path is not None and video_id and video_id not in output_path.stem:
+        output_path = output_path.parent / f"{output_path.stem}_{video_id}{output_path.suffix}"
+
     # Validate model name
     if model not in AVAILABLE_MODELS:
         raise click.BadParameter(
@@ -230,6 +240,8 @@ def transcribe(
     if verbose:
         click.echo(f"youtube-transcriber v{__version__}", err=True)
         click.echo(f"  URL:    {url}", err=True)
+        if video_id:
+            click.echo(f"  Video:  {video_id}", err=True)
         click.echo(f"  Model:  {model}", err=True)
         click.echo(f"  Format: {output_format}", err=True)
         click.echo(f"  Device: {device_label}", err=True)

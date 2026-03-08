@@ -5,6 +5,28 @@ All notable changes to the "YouTube Transcriber" will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-03-08
+
+### Added
+
+- **Video ID injected into output filenames** — when `--output` is specified the tool
+  now automatically inserts the 11-character YouTube video ID into the filename stem
+  before the extension (e.g. `transcript.txt` → `transcript_dQw4w9WgXcQ.txt`). This
+  guarantees unique output files when an LLM transcribes multiple videos in a single
+  prompt. If the video ID is already present in the stem it is not duplicated.
+- **Video ID shown in progress banner** — the startup banner now includes a `Video:`
+  line displaying the extracted video ID alongside the URL, model, format, and device.
+
+### Changed
+
+- **Skill doc updated for video-ID-based filenames** — all `--output /tmp/transcript.txt`
+  examples in `docs/youtube-transcribe.skill.md` updated to
+  `--output /tmp/transcript_<video_id>.txt`. Added an explanation of the auto-injection
+  behaviour, updated Step 2, Step 3 (poll/read), Critical Rule #3, the osascript command
+  patterns section, the full command reference, and all troubleshooting examples.
+  A new "Multiple videos in one prompt" osascript pattern was added showing how to
+  sequence two transcriptions with distinct output files.
+
 ## [0.2.1] - 2026-03-08
 
 ### Changed

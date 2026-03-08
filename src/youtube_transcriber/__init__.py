@@ -4,4 +4,4 @@ Downloads audio from YouTube videos and transcribes them entirely on your machin
 Designed to pipe clean transcript text into any LLM for analysis.
 """
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"
