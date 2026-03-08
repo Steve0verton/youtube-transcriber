@@ -102,6 +102,55 @@ read the full file with the `cat` variant above and proceed to Step 4.
 
 Once you have the transcript text, proceed with what the user asked for.
 
+Apply the guidance in **Interpreting Transcript Quality** below before treating the
+transcript as authoritative.
+
+---
+
+## Interpreting Transcript Quality
+
+Whisper-based transcription is high quality but not perfect. The output is shaped by
+several real-world factors. Be aware of these when reading, summarizing, or quoting
+a transcript.
+
+### Known sources of errors
+
+| Factor | Effect on output |
+|---|---|
+| Background music or ambient sound | Words may be garbled or invented; the model tries to transcribe audio that isn't speech |
+| Low audio quality or heavy compression | Increased word substitution errors and dropped syllables |
+| Heavy accents or non-standard pronunciation | Occasional mistranscriptions of individual words |
+| Technical jargon, proper nouns, names | Frequently misspelled or phonetically approximated (e.g. "Kubernetes" → "Cubeerness") |
+| Overlapping speakers | Words from different speakers may be merged or attributed incorrectly |
+| Music intro/outro or background score | Spurious text fragments at the start or end of the transcript |
+| Very fast speech | Words may run together or be partially dropped |
+
+### How to handle errors as the AI copilot
+
+- **Do not present phonetic guesses as facts.** If a proper noun or technical term looks
+  wrong (e.g. a misspelled name, an acronym rendered as a word), use context to infer
+  the likely correct form and note the uncertainty if it matters.
+- **Use context to resolve ambiguity.** A word that looks like a typo usually has a
+  plausible correct reading when you consider the surrounding sentences.
+- **Flag low-confidence passages.** If a section of the transcript is clearly garbled
+  (disconnected words, nonsensical phrases) — likely caused by music or noise — tell
+  the user that portion was not reliably transcribed rather than summarizing gibberish.
+- **Quote carefully.** When quoting specific words directly attributed to a speaker,
+  add a light caveat if any uncertainty exists: *"roughly paraphrasing"* or
+  *"transcript may contain minor errors"*.
+- **Suggest a higher-accuracy model if quality is poor.** If the transcript has many
+  obvious errors throughout, recommend the user retry with `--model large-v3`:
+
+  "The transcript has several unclear passages — re-running with `--model large-v3`
+  will improve accuracy, though it will take a bit longer."
+
+### Quick quality signals to look for
+
+- **Segment count is 0 or very low relative to video length** — VAD or audio issue; retry without `--vad`
+- **Opening segments are nonsensical** — intro music was transcribed as speech; safe to discard
+- **Proper nouns are consistently garbled** — phonetic approximation; infer from context
+- **Large blocks of repetitive or looping text** — model hallucination on near-silence; ignore those sections
+
 ---
 
 ## Critical Rules
