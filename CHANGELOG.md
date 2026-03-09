@@ -5,6 +5,20 @@ All notable changes to the "YouTube Transcriber" will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3] - 2026-03-09
+
+### Changed
+
+- **Bumped `requires-python` from `>=3.10` to `>=3.11`** — `onnxruntime` (a transitive
+  dependency of the `mlx` extra) no longer ships wheels for Python 3.10, making installs
+  on 3.10 fail. The minimum is now 3.11 to match what the full dependency graph actually
+  requires.
+- **Added `.python-version` file pinned to 3.12** — `uv` and other tooling (pyenv, mise)
+  use this file to auto-select the right interpreter, so `uv sync` works out of the box
+  without needing `--python` flags.
+- **README updated** — Requirements section now states Python 3.11+; installation section
+  notes the `.python-version` pin and adds an Apple Silicon callout for `uv sync --extra mlx`.
+
 ## [0.2.2] - 2026-03-08
 
 ### Added

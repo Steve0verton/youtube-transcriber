@@ -47,7 +47,7 @@ A local, privacy-preserving CLI tool that downloads audio from YouTube videos an
 
 ## Requirements
 
-- **Python 3.10+**
+- **Python 3.11+**
 - **[ffmpeg](https://ffmpeg.org/download.html)** — required by yt-dlp for audio extraction
 - **[uv](https://docs.astral.sh/uv/)** — recommended for installation and running
 - **[Node.js](https://nodejs.org/)** — required by yt-dlp to solve YouTube's JS challenges and extract audio formats reliably
@@ -72,12 +72,18 @@ brew install ffmpeg node
 git clone https://github.com/Steve0verton/youtube-transcriber.git
 cd youtube-transcriber
 
-# Install dependencies
+# Install dependencies (Python 3.12 is pinned via .python-version)
 uv sync
 
 # Run
 uv run youtube-transcriber --help
 ```
+
+> **Apple Silicon (M1/M2/M3/M4):** Install the `mlx` extra for GPU-accelerated transcription
+> via Apple Metal instead of CPU:
+> ```bash
+> uv sync --extra mlx
+> ```
 
 ### Using pip
 
