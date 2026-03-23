@@ -97,59 +97,81 @@ A successful run means everything is correctly installed.
 
 ---
 
-## Step 4: Add a Claude Desktop System Prompt
+## Step 4: Configure the Skill
 
-A system prompt teaches Claude that the tool exists, when to use it, and how to
-call it. This persists across all conversations in Claude Desktop.
+Three options are available depending on how you use Claude. Pick one.
 
-**Claude Desktop → Settings → Custom Instructions**
+---
 
-Paste the following:
+### Option A — Install the packaged `.skill` file (recommended for Claude Desktop)
 
-```text
-You have access to a local CLI tool called `youtube-transcriber` installed on this machine.
+This repo ships a pre-packaged skill file that can be imported directly into
+any Claude app with a skill library or skill import UI.
 
-TOOL: youtube-transcriber
-PURPOSE: Downloads and transcribes YouTube videos locally using Whisper AI.
-On Apple Silicon Macs (M-series), it uses the Metal GPU via mlx-whisper for fast,
-hardware-accelerated transcription. Runs entirely offline after initial model download.
+**File:** `docs/youtube-transcriber.skill`
 
-USAGE:
-  youtube-transcriber transcribe "<youtube-url>"                   # transcript to stdout
-  youtube-transcriber transcribe "<youtube-url>" --quiet           # suppress progress output
-  youtube-transcriber transcribe "<youtube-url>" --model large-v3  # highest quality
-  youtube-transcriber transcribe "<youtube-url>" --format json     # with timestamps
-  youtube-transcriber transcribe "<youtube-url>" --format srt      # subtitle format
-  youtube-transcriber transcribe "<youtube-url>" --output out.txt  # save to file
-  youtube-transcriber transcribe "<youtube-url>" --vad             # VAD filter (speech-only, CPU/CUDA only)
-  youtube-transcriber transcribe "<youtube-url>" --log             # enable debug log
-  youtube-transcriber models                                        # list available models
+1. In Claude Desktop (or Claude.ai), open **Settings → Skills** (or the equivalent
+   skill management panel for your version).
+2. Choose **Import skill** or **Add from file**.
+3. Select `docs/youtube-transcriber.skill` from this repository.
+4. Claude will load the skill and it will be available in all future conversations.
 
-WHEN TO USE:
-- User shares a YouTube URL and asks you to watch, summarize, analyze, or transcribe it
-- User says "transcribe this", "summarize this video", "what does this video say"
-- Any request that involves understanding or extracting content from a YouTube video
+> This is the simplest option if your Claude app supports skill import. The packaged
+> file contains the full skill definition, workflow instructions, and reference documents.
 
-CRITICAL: NEVER run more than one transcription at a time. Only one instance of
-youtube-transcriber may run simultaneously. A second process will be immediately
-blocked with an error. Wait for the first to complete before starting another.
+---
 
-BEHAVIOR:
-- Run the command, capture the transcript, then analyze or summarize as requested
-- Default model is "turbo" — good balance of speed and quality
-- On Apple Silicon (M-series Macs), the --device flag defaults to "mps" which uses
-  the Metal GPU and Apple Neural Engine via mlx-whisper. This is much faster than CPU
-  and avoids fan noise / system overload. No extra flag needed — it's automatic.
-- Use "--model large-v3" if the user asks for higher accuracy
-- Always use "--quiet" when you want to capture only the clean transcript text
-- For LONG videos (sermons, lectures, podcasts over 30 min): ask the user if they
-  would like you to open a Terminal window to monitor progress, then do so with:
-    osascript -e 'tell app "Terminal" to do script "youtube-transcriber transcribe \"<url>\" --output /tmp/transcript.txt"'
-  Then read /tmp/transcript.txt once complete.
-- Do NOT use "--vad" for music videos or any video with background audio
-- First use of a new model downloads it from HuggingFace — warn the user
-- If transcription returns empty or suspiciously short output, retry with --log
+### Option B — Copy the skill folder (user-level install for Claude Code / CLI)
+
+If you use Claude Code or the Claude CLI, skills are loaded from `~/.claude/skills/`.
+Copying the skill folder there makes it available in every project.
+
+**Source:** `docs/.claude/skills/youtube-transcribe/`
+
+```bash
+# Create the skills directory if it doesn't exist
+mkdir -p ~/.claude/skills
+
+# Copy the skill folder
+cp -r docs/.claude/skills/youtube-transcribe ~/.claude/skills/
 ```
+
+The installed structure will be:
+
+```
+~/.claude/skills/
+└── youtube-transcribe/
+    ├── SKILL.md              # skill definition and workflow
+    └── references/
+        ├── models-and-quality.md
+        └── troubleshooting.md
+```
+
+Claude Code will automatically discover and load the skill on next launch. The
+`references/` documents are loaded on demand when the skill needs them.
+
+---
+
+### Option C — Drop-in project skill (project-scoped)
+
+Use this when you want the skill available only within a specific project, without
+installing it globally. Place the single-file skill definition in your project's
+`.claude/` directory.
+
+**File:** `docs/youtube-transcribe.skill.md`
+
+```bash
+# From inside your target project:
+mkdir -p .claude/skills
+cp /path/to/youtube-transcriber/docs/youtube-transcribe.skill.md .claude/skills/
+
+# Or copy from the youtube-transcriber repo directly if it is a subdirectory
+```
+
+This works with Claude Code and any tool that reads project-local `.claude/` skill
+files. It includes the full skill definition but not the separate reference documents
+(those are bundled inline). Suitable for projects where you want the skill checked
+into version control alongside the project itself.
 
 ---
 

@@ -10,7 +10,7 @@ A local, privacy-preserving CLI tool that downloads audio from YouTube videos an
 ## Features
 
 - **Fully local** — audio download + transcription happen on your machine
-- **No API keys** — yt-dlp handles YouTube auth via browser cookies if needed
+- **No API keys** — yt-dlp handles YouTube audio extraction; browser cookies can be used as a workaround for bot-detection issues
 - **High-quality transcription** — faster-whisper with configurable model sizes (tiny → large-v3 → turbo)
 - **GPU auto-detection** — uses CUDA if available, falls back to CPU automatically
 - **Multiple output formats** — plain text, JSON (with timestamps), SRT, VTT
@@ -195,7 +195,7 @@ The `2>/dev/null` suppresses progress output so Claude receives only the clean t
 
 ### Example Claude prompt
 
-```
+```text
 Transcribe this YouTube video and give me a 5-bullet summary of the key points:
 https://www.youtube.com/watch?v=...
 ```
@@ -206,7 +206,7 @@ Claude runs `youtube-transcriber transcribe <url>` and works with the returned t
 
 ## Architecture
 
-```
+```text
 YouTube URL
     │
     ▼
@@ -285,11 +285,33 @@ invoked non-interactively (e.g., by Claude Desktop).
 
 ### yt-dlp bot detection error
 
-YouTube is rate-limiting the download. Try passing browser cookies:
+YouTube is rate-limiting the download. The tool does not currently expose a `--cookies`
+CLI flag, but you can work around this at the yt-dlp level using a cookies file.
 
-```bash
-youtube-transcriber transcribe "<url>" --cookies-from-browser chrome
-```
+**Option 1 — Export cookies manually from Chrome:**
+
+1. Install a browser extension such as [Get cookies.txt LOCALLY](https://chrome.google.com/webstore/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc)
+   (audit any extension before installing — only use trusted, open-source options).
+2. Navigate to `youtube.com` while logged in.
+3. Export cookies to a `.txt` file in Netscape/Mozilla format.
+4. Run yt-dlp directly to verify the cookies work, then use them as a workaround until
+   a `--cookies` flag is added to this CLI.
+
+**Option 2 — Chrome DevTools Protocol (CDP) / Chrome MCP:**
+
+If you have a Chrome MCP server available (e.g., via a Puppeteer/Playwright MCP that
+exposes CDP), you can instruct your LLM agent to:
+
+1. Open `youtube.com` in the connected Chrome instance while logged in.
+2. Use CDP's `Network.getCookies` domain to extract the session cookies.
+3. Write them to a Netscape-format `cookies.txt` file.
+4. Pass that file directly to yt-dlp outside of this CLI tool.
+
+> **Security note:** Cookie files grant full account access. Store them outside your project
+> directory, never commit them to version control, and delete them when no longer needed.
+
+> **Roadmap:** Proper `--cookies` and `--cookies-from-browser` flags are candidates for a
+> future release. If you need this, open an issue or submit a PR.
 
 ---
 
