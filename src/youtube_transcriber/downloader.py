@@ -40,8 +40,8 @@ def _find_js_runtime() -> dict | None:
     # These cover: Homebrew (Apple Silicon / Intel), nvm defaults, volta, fnm.
     _FALLBACK_PATHS: dict[str, list[str]] = {
         "node": [
-            "/opt/homebrew/bin/node",           # Homebrew, Apple Silicon
-            "/usr/local/bin/node",              # Homebrew, Intel
+            "/opt/homebrew/bin/node",  # Homebrew, Apple Silicon
+            "/usr/local/bin/node",  # Homebrew, Intel
             str(Path.home() / ".nvm/versions/node"),  # searched below
             str(Path.home() / ".volta/bin/node"),
             str(Path.home() / ".fnm/aliases/default/bin/node"),
@@ -77,7 +77,9 @@ def _find_js_runtime() -> dict | None:
                     for ver in reversed(versions):
                         node_bin = ver / "bin" / "node"
                         if node_bin.is_file():
-                            log.debug("Found %s via nvm fallback: %s", runtime, node_bin)
+                            log.debug(
+                                "Found %s via nvm fallback: %s", runtime, node_bin
+                            )
                             return {runtime: {"path": str(node_bin)}}
                 continue
 
@@ -108,13 +110,19 @@ class _ProgressHook:
         elif status == "finished":
             filepath = Path(d.get("filename", ""))
             size_mb = filepath.stat().st_size / 1_048_576 if filepath.exists() else 0
-            click.echo(f"  Download complete ({size_mb:.1f} MB). Extracting audio...", err=True)
+            click.echo(
+                f"  Download complete ({size_mb:.1f} MB). Extracting audio...", err=True
+            )
         elif status == "error":
             click.echo("  Download error.", err=True)
 
 
 @contextmanager
-def download_audio(url: str, verbose: bool = True) -> Generator[Path, None, None]:
+def download_audio(
+    url: str,
+    verbose: bool = True,
+    cookies_from_browser: str | None = None,
+) -> Generator[Path, None, None]:
     """Download the best audio stream from a YouTube URL to a temporary file.
 
     Uses yt-dlp to download and extract audio. The temporary file is deleted
@@ -156,6 +164,12 @@ def download_audio(url: str, verbose: bool = True) -> Generator[Path, None, None
             "nopart": True,
         }
 
+        # Pass browser cookies to bypass age-gates and 403 errors.
+        # Opt-in only — not enabled by default. Pass cookies_from_browser='chrome'
+        # (or 'firefox' etc.) to use the user's logged-in browser session.
+        if cookies_from_browser:
+            ydl_opts["cookiesfrombrowser"] = (cookies_from_browser,)
+
         # YouTube requires JS challenge solving; wire in the first available runtime.
         # Without this, yt-dlp may silently miss formats or fail entirely on some videos.
         js_runtime = _find_js_runtime()
@@ -170,7 +184,11 @@ def download_audio(url: str, verbose: bool = True) -> Generator[Path, None, None
                 "Install Node.js with: brew install node"
             )
 
-        log.debug("Starting yt-dlp download: url=%s opts=%s", url, {k: v for k, v in ydl_opts.items() if k != "progress_hooks"})
+        log.debug(
+            "Starting yt-dlp download: url=%s opts=%s",
+            url,
+            {k: v for k, v in ydl_opts.items() if k != "progress_hooks"},
+        )
 
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -183,14 +201,19 @@ def download_audio(url: str, verbose: bool = True) -> Generator[Path, None, None
 
                 log.debug(
                     "yt-dlp info: id=%s title=%r duration=%ss format=%s",
-                    info.get("id"), info.get("title"), info.get("duration"), info.get("format"),
+                    info.get("id"),
+                    info.get("title"),
+                    info.get("duration"),
+                    info.get("format"),
                 )
 
                 # Find the downloaded file in the temp directory
                 downloaded_files = list(Path(tmpdir).iterdir())
                 log.debug("Files in tmpdir after download: %s", downloaded_files)
                 if not downloaded_files:
-                    log.error("No audio file found in tmpdir=%s after yt-dlp download", tmpdir)
+                    log.error(
+                        "No audio file found in tmpdir=%s after yt-dlp download", tmpdir
+                    )
                     raise click.ClickException(
                         "yt-dlp reported success but no audio file was found in "
                         f"the temp directory. URL: {url}"
@@ -199,7 +222,11 @@ def download_audio(url: str, verbose: bool = True) -> Generator[Path, None, None
                 # Prefer .wav (post-processed), then grab whatever is there
                 wav_files = [f for f in downloaded_files if f.suffix == ".wav"]
                 audio_path = wav_files[0] if wav_files else downloaded_files[0]
-                log.debug("Selected audio file: %s (%.1f MB)", audio_path, audio_path.stat().st_size / 1_048_576)
+                log.debug(
+                    "Selected audio file: %s (%.1f MB)",
+                    audio_path,
+                    audio_path.stat().st_size / 1_048_576,
+                )
 
                 if verbose:
                     click.echo(f"  Audio ready: {audio_path.name}", err=True)
@@ -216,4 +243,4 @@ def download_audio(url: str, verbose: bool = True) -> Generator[Path, None, None
                 "  • For age-gated videos, try: --cookies-from-browser chrome\n"
                 "  • Make sure yt-dlp is up to date: uv run pip install -U yt-dlp\n"
                 "  • Install Node.js to enable YouTube challenge solving: brew install node"
-                ) from exc
+            ) from exc

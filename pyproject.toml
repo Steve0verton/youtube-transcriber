@@ -1,6 +1,6 @@
 [project]
 name = "youtube-transcriber"
-version = "0.2.3"
+version = "0.2.5"
 description = "Download YouTube audio and transcribe locally using faster-whisper. Designed for LLM ingestion via CLI."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -25,6 +25,7 @@ dependencies = [
     "yt-dlp>=2024.1.1",
     "faster-whisper>=1.0.0",
     "click>=8.1.0",
+    "secretstorage>=3.5.0",
 ]
 
 [project.optional-dependencies]

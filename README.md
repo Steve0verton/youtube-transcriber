@@ -40,8 +40,11 @@ A local, privacy-preserving CLI tool that downloads audio from YouTube videos an
 
 ## Platform Support
 
-> **macOS only** — the LLM agent integration (osascript-based execution) is written for **macOS-only**.
-> **Windows is currently not supported.** Linux can run the CLI tool directly from a terminal, but the agent skill that drives automated transcription via `osascript` is not excplicitly tested on Linux and may require adjustments to work with different desktop environments.
+- **Linux (Ubuntu/Debian)** — fully supported. CLI tool runs natively; recommended for servers and automated pipelines.
+- **macOS** — fully supported. Apple Silicon users can install the `mlx` extra for GPU-accelerated transcription via Metal.
+- **Windows** — not currently tested or supported.
+
+The `osascript`-based Claude Desktop integration examples in `docs/` are macOS-specific, but the CLI tool itself works identically on Linux and macOS.
 
 ---
 
@@ -53,7 +56,11 @@ A local, privacy-preserving CLI tool that downloads audio from YouTube videos an
 - **[Node.js](https://nodejs.org/)** — required by yt-dlp to solve YouTube's JS challenges and extract audio formats reliably
 
 ```bash
+# macOS
 brew install ffmpeg node
+
+# Ubuntu/Debian
+sudo apt install ffmpeg nodejs
 ```
 
 > **macOS note:** Install Node.js via Homebrew (`brew install node`), not nvm.
@@ -65,7 +72,22 @@ brew install ffmpeg node
 
 ## Installation
 
-### Using uv (recommended)
+### As a standalone tool with uv (recommended for most users)
+
+Install once, run from anywhere — no virtual environment to activate, no `uv run` prefix needed:
+
+```bash
+uv tool install git+https://github.com/Steve0verton/youtube-transcriber.git
+youtube-transcriber --help
+```
+
+To upgrade later:
+
+```bash
+uv tool upgrade youtube-transcriber
+```
+
+### From a local clone (for development)
 
 ```bash
 # Clone the repo
@@ -88,7 +110,7 @@ uv run youtube-transcriber --help
 ### Using pip
 
 ```bash
-pip install -e .
+pip install git+https://github.com/Steve0verton/youtube-transcriber.git
 youtube-transcriber --help
 ```
 

@@ -5,6 +5,35 @@ All notable changes to the "YouTube Transcriber" will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.5] - 2026-03-24
+
+### Changed
+
+- **`--num-threads` default changed from `4` → `0` (all CPUs)** — faster-whisper's
+  CTranslate2 backend treats `cpu_threads=0` as "use all available logical CPUs",
+  meaning the model now saturates the machine's full thread count by default instead
+  of being artificially capped at 4. On a machine with many cores this substantially
+  reduces transcription wall-clock time with no accuracy trade-off. Users who want
+  to limit CPU impact can still pass `--num-threads N` explicitly.
+- **`transcribe_audio()` API default updated to match** — `num_threads` parameter
+  in the public Python API now defaults to `0` as well, consistent with the CLI.
+
+## [0.2.4] - 2026-03-18
+
+### Fixed
+
+- **Updated yt-dlp lockfile to 2026.03.17** — yt-dlp 2026.02.21 broke YouTube
+  audio downloads due to a JS challenge solver regression with Node v25+. Bumping
+  the lockfile resolves "Requested format is not available" errors on all player
+  clients.
+
+### Added
+
+- **`--cookies-from-browser` CLI option** — pass browser cookies to yt-dlp to
+  bypass age-gated and member-only YouTube videos (e.g. `--cookies-from-browser chrome`).
+  Opt-in only; not enabled by default. The `download_audio()` function also accepts
+  a `cookies_from_browser` parameter for programmatic use.
+
 ## [0.2.3] - 2026-03-09
 
 ### Changed

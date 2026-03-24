@@ -94,9 +94,7 @@ def cli() -> None:
         ["auto", "float16", "int8_float16", "int8", "float32"],
         case_sensitive=False,
     ),
-    help=(
-        "Model quantization. 'auto' picks float16 for GPU, int8 for CPU."
-    ),
+    help=("Model quantization. 'auto' picks float16 for GPU, int8 for CPU."),
 )
 @click.option(
     "--beam-size",
@@ -127,12 +125,23 @@ def cli() -> None:
 @click.option(
     "--num-threads",
     "num_threads",
-    default=4,
+    default=0,
     show_default=True,
     type=int,
     help=(
-        "Maximum CPU threads for faster-whisper (CPU/CUDA backends only). "
-        "Defaults to 4 to avoid pegging all cores. Ignored on Apple Silicon (mps)."
+        "CPU threads for faster-whisper (CPU/CUDA backends only). "
+        "0 (default) = use all available CPUs. Ignored on Apple Silicon (mps)."
+    ),
+)
+@click.option(
+    "--cookies-from-browser",
+    "cookies_from_browser",
+    default=None,
+    metavar="BROWSER",
+    help=(
+        "Pass cookies from the specified browser to yt-dlp (e.g. 'chrome', 'firefox'). "
+        "Useful for age-gated or member-only videos. The browser must be running or "
+        "have an accessible cookie store."
     ),
 )
 @click.option(
@@ -161,6 +170,7 @@ def transcribe(
     num_threads: int,
     quiet: bool,
     vad_filter: bool,
+    cookies_from_browser: str | None,
     enable_log: bool,
     log_path: Path | None,
 ) -> None:
@@ -186,7 +196,13 @@ def transcribe(
 
     log.debug(
         "transcribe called: url=%s model=%s format=%s device=%s compute_type=%s beam_size=%d vad=%s",
-        url, model, output_format, device, compute_type, beam_size, vad_filter,
+        url,
+        model,
+        output_format,
+        device,
+        compute_type,
+        beam_size,
+        vad_filter,
     )
 
     # Validate URL
@@ -204,7 +220,9 @@ def transcribe(
     # multiple videos never silently overwrites the previous result.
     # e.g. /tmp/transcript.txt  ->  /tmp/transcript_dQw4w9WgXcQ.txt
     if output_path is not None and video_id and video_id not in output_path.stem:
-        output_path = output_path.parent / f"{output_path.stem}_{video_id}{output_path.suffix}"
+        output_path = (
+            output_path.parent / f"{output_path.stem}_{video_id}{output_path.suffix}"
+        )
 
     # Validate model name
     if model not in AVAILABLE_MODELS:
@@ -220,6 +238,7 @@ def transcribe(
     # Prevent multiple concurrent transcription processes
     if not acquire_run_lock():
         from youtube_transcriber.utils import _LOCK_FILE
+
         raise click.ClickException(
             "Another youtube-transcriber process is already running.\n"
             "Only one transcription can run at a time to avoid excessive CPU/memory usage.\n"
@@ -228,12 +247,13 @@ def transcribe(
 
     # Resolve the device early so we can display it in the banner
     from youtube_transcriber.utils import detect_device, is_apple_silicon
+
     resolved_device = detect_device() if device == "auto" else device.lower()
 
     _DEVICE_LABELS: dict[str, str] = {
-        "mps":  "Apple Silicon GPU  [MLX / Metal + Neural Engine]",
+        "mps": "Apple Silicon GPU  [MLX / Metal + Neural Engine]",
         "cuda": "NVIDIA GPU  [CUDA / faster-whisper]",
-        "cpu":  "CPU  [faster-whisper]",
+        "cpu": "CPU  [faster-whisper]",
     }
     device_label = _DEVICE_LABELS.get(resolved_device, resolved_device)
 
@@ -257,8 +277,14 @@ def transcribe(
     from youtube_transcriber.transcriber import transcribe_audio
 
     try:
-        with download_audio(url, verbose=verbose) as audio_path:
-            log.debug("Audio downloaded to: %s (size=%d bytes)", audio_path, audio_path.stat().st_size)
+        with download_audio(
+            url, verbose=verbose, cookies_from_browser=cookies_from_browser
+        ) as audio_path:
+            log.debug(
+                "Audio downloaded to: %s (size=%d bytes)",
+                audio_path,
+                audio_path.stat().st_size,
+            )
             if verbose:
                 click.echo("", err=True)
                 click.echo("[ Step 2/2 ] Transcribing...", err=True)
@@ -275,7 +301,9 @@ def transcribe(
             )
             log.debug(
                 "Transcription done: language=%s duration=%.1fs segments=%d",
-                result.language, result.duration, len(result.segments),
+                result.language,
+                result.duration,
+                len(result.segments),
             )
 
     except SystemExit:
@@ -327,7 +355,9 @@ def models() -> None:
 
     for name, info in AVAILABLE_MODELS.items():
         default_marker = " (default)" if name == DEFAULT_MODEL else ""
-        notes = info["notes"] + default_marker if info["notes"] else default_marker.strip()
+        notes = (
+            info["notes"] + default_marker if info["notes"] else default_marker.strip()
+        )
         click.echo(
             f"  {name:<{col_model}} {info['params']:<{col_params}} "
             f"{info['vram']:<{col_vram}} {notes}"

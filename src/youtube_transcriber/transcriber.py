@@ -289,7 +289,7 @@ def transcribe_audio(
     device: str = "auto",
     compute_type: str = "auto",
     beam_size: int = 5,
-    num_threads: int = 4,
+    num_threads: int = 0,
     vad_filter: bool = False,
     verbose: bool = True,
 ) -> TranscriptResult:
@@ -313,8 +313,8 @@ def transcribe_audio(
             "int8_float16", "int8". Ignored when using the MLX backend.
         beam_size: Beam size for beam search decoding (higher = more accurate, slower).
             Ignored when using the MLX backend (which uses greedy decoding).
-        num_threads: Maximum CPU threads for faster-whisper. Defaults to 4 to
-            avoid pegging all cores. Ignored when using the MLX (mps) backend.
+        num_threads: CPU threads for faster-whisper. 0 (default) = use all
+            available CPUs. Ignored when using the MLX (mps) backend.
         vad_filter: Enable Silero VAD pre-filtering to strip silence.
             Not supported by the MLX backend; ignored with a warning.
         verbose: If True, write progress messages to stderr.
