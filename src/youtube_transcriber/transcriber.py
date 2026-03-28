@@ -313,8 +313,10 @@ def transcribe_audio(
             "int8_float16", "int8". Ignored when using the MLX backend.
         beam_size: Beam size for beam search decoding (higher = more accurate, slower).
             Ignored when using the MLX backend (which uses greedy decoding).
-        num_threads: CPU threads for faster-whisper. 0 (default) = use all
-            available CPUs. Ignored when using the MLX (mps) backend.
+        num_threads: CPU threads for faster-whisper. 0 = CTranslate2 default
+            (which is 4 internally, not all CPUs). Pass the actual CPU count
+            (e.g. via os.cpu_count()) to use all available cores.
+            Ignored when using the MLX (mps) backend.
         vad_filter: Enable Silero VAD pre-filtering to strip silence.
             Not supported by the MLX backend; ignored with a warning.
         verbose: If True, write progress messages to stderr.

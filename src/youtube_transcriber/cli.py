@@ -130,7 +130,8 @@ def cli() -> None:
     type=int,
     help=(
         "CPU threads for faster-whisper (CPU/CUDA backends only). "
-        "0 (default) = use all available CPUs. Ignored on Apple Silicon (mps)."
+        "0 = let CTranslate2 decide (defaults to 4 internally — pass explicit count for full core usage). "
+        "Ignored on Apple Silicon (mps)."
     ),
 )
 @click.option(
