@@ -5,6 +5,45 @@ All notable changes to the "YouTube Transcriber" will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.6] - 2026-05-11
+
+### Changed
+
+- **Claude skill moved to repo root at `skill/youtube-transcribe/`.** Previously the skill
+  source lived under the hidden `docs/.claude/skills/` path, which was invisible in casual
+  directory listings and obscured the fact that the project shipped a ready-to-import skill.
+  The folder is now first-class — listed in the README's documentation table and surfaced in
+  a top-level "Install the Claude Skill" section with three install paths (Claude Desktop /
+  Claude.ai via `.skill` bundle, Claude Code via `~/.claude/skills/`, project-scoped via
+  `.claude/skills/`).
+- **`.skill` bundle is now a release asset, not an in-repo binary.** The packaged
+  `youtube-transcribe.skill` (zip of `skill/youtube-transcribe/`) ships as an attached asset
+  on each GitHub Release. A reproducible build is provided at `scripts/build-skill.sh`.
+  Also fixes a name typo — the bundle was previously named `youtube-transcriber.skill`
+  while the skill itself is `youtube-transcribe`.
+- **Skill `compatibility` block loosened.** Previously claimed Apple Silicon was required;
+  now correctly states macOS is required (osascript-driven workflow) and Apple Silicon is
+  recommended for GPU acceleration but Intel Macs still work via the CPU backend.
+- **README `Whisper Model Reference` column is now "Size on disk" with accurate values**
+  (~75 MB / tiny to ~3 GB / large-v3) instead of the previous "VRAM" column that mixed up
+  weight file sizes with runtime memory. The basic-usage examples are aligned with the same
+  numbers.
+- **`docs/setup-claude-desktop.md` overhauled.** Step 4 now matches the new install paths;
+  Step 5 (the misleading empty `{"mcpServers": {}}` snippet) is removed; the "Test Claude
+  Integration" and "How It Works" sections now describe the actual osascript-driven skill
+  flow rather than a direct shell-pipe flow; the duplicated Model Selection table now links
+  to the canonical README table.
+
+### Fixed
+
+- **`--quiet` flag references removed from `docs/setup-claude-desktop.md`.** That flag does
+  not exist on the CLI and never did under this version line. Replaced with the documented
+  `2>/dev/null` redirect.
+- **Flat duplicate `docs/youtube-transcribe.skill.md` removed.** It referenced
+  `references/models-and-quality.md` and `references/troubleshooting.md` that did not exist
+  next to it, making the single-file form non-functional. The canonical folder form at
+  `skill/youtube-transcribe/` is now the only source.
+
 ## [0.2.5] - 2026-03-24
 
 ### Changed

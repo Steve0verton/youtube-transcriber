@@ -1,23 +1,27 @@
 ---
 name: youtube-transcribe
 description: >
-  Transcribe YouTube videos locally on the user's Mac using Whisper AI and Apple Silicon GPU acceleration.
-  Use this skill whenever a user shares a YouTube URL and wants it transcribed, summarized, analyzed, or
-  understood. Also trigger when the user says "transcribe this video", "what does this video say",
-  "summarize this YouTube video", "watch this", or pastes any youtube.com or youtu.be link with a request
-  to extract or work with its content. This skill handles the full pipeline: downloading audio via yt-dlp,
-  transcribing via mlx-whisper on Apple Silicon GPU, and reading the result back for analysis. Even if the
-  user doesn't explicitly say "transcribe", if they share a YouTube link and ask Claude to do anything with
-  the video's content, this skill applies.
+  Transcribe YouTube videos locally on the user's Mac using Whisper AI. Apple Silicon machines get
+  GPU acceleration via MLX; Intel Macs transcribe on CPU. Use this skill whenever a user shares a
+  YouTube URL and wants it transcribed, summarized, analyzed, or understood. Also trigger when the
+  user says "transcribe this video", "what does this video say", "summarize this YouTube video",
+  "watch this", or pastes any youtube.com or youtu.be link with a request to extract or work with
+  its content. This skill handles the full pipeline: downloading audio via yt-dlp, transcribing
+  via mlx-whisper (Apple Silicon GPU) or faster-whisper (CPU/CUDA), and reading the result back
+  for analysis. Even if the user doesn't explicitly say "transcribe", if they share a YouTube link
+  and ask Claude to do anything with the video's content, this skill applies.
 compatibility: >
-  Requires macOS with Apple Silicon (M1/M2/M3/M4). Requires the youtube-transcriber CLI tool installed
-  via uv (https://github.com/Steve0verton/youtube-transcriber). Requires the osascript tool to execute
-  commands on the user's Mac. Windows and Linux are not supported for agent-driven execution.
+  Requires macOS — the osascript-based workflow is macOS-only. Apple Silicon (M1/M2/M3/M4) is
+  recommended for GPU-accelerated transcription via MLX; Intel Macs fall back to CPU and still
+  work but are slower. Requires the youtube-transcriber CLI tool installed via uv
+  (https://github.com/Steve0verton/youtube-transcriber). Windows and Linux are not supported for
+  agent-driven execution because this skill drives the user's Terminal via osascript.
 ---
 
 # YouTube Transcribe Skill
 
-Transcribe YouTube videos locally on the user's Mac using Whisper AI with Apple Silicon GPU acceleration.
+Transcribe YouTube videos locally on the user's Mac using Whisper AI. On Apple Silicon, transcription
+runs on the Metal GPU and Apple Neural Engine via MLX; on Intel Macs it runs on CPU via faster-whisper.
 No cloud APIs, no API keys — runs entirely on-device after initial model download.
 
 **Source:** https://github.com/Steve0verton/youtube-transcriber

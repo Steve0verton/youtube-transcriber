@@ -118,6 +118,7 @@ osascript -e 'do shell script "cat ~/.local/share/youtube-transcriber/debug.log"
 
 ## Platform check
 
-This skill only supports macOS with Apple Silicon. If the user is on Windows or Linux, stop and let them
-know. They can still run the CLI tool directly from a terminal on Linux, but the osascript-based agent
-workflow is macOS-only.
+This skill only supports macOS — the osascript-driven workflow opens the user's Terminal and is
+macOS-specific. Apple Silicon Macs get GPU acceleration via MLX; Intel Macs still work via the CPU
+backend (faster-whisper), just slower. If the user is on Windows or Linux, stop and let them know:
+they can still run the CLI tool directly from a terminal on Linux, but the agent skill is macOS-only.

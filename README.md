@@ -116,6 +116,53 @@ youtube-transcriber --help
 
 ---
 
+## Install the Claude Skill
+
+This repo ships a ready-to-import Claude skill at `skill/youtube-transcribe/`. Once installed,
+you can paste any YouTube URL into Claude Desktop or Claude Code and it will transcribe and
+summarize the video on your Mac — no extra prompting required.
+
+### Claude Desktop / Claude.ai (recommended)
+
+1. Download `youtube-transcribe.skill` from the [latest release](https://github.com/Steve0verton/youtube-transcriber/releases/latest).
+2. In Claude Desktop or Claude.ai, open **Settings → Skills** → **Import skill** and pick the file.
+3. Paste a YouTube URL into any conversation and ask Claude to transcribe / summarize it.
+
+### Claude Code (user-level)
+
+```bash
+# From a clone of this repo:
+mkdir -p ~/.claude/skills
+cp -r skill/youtube-transcribe ~/.claude/skills/
+```
+
+Or fetch without cloning:
+
+```bash
+mkdir -p ~/.claude/skills/youtube-transcribe/references
+curl -L https://raw.githubusercontent.com/Steve0verton/youtube-transcriber/main/skill/youtube-transcribe/SKILL.md \
+  -o ~/.claude/skills/youtube-transcribe/SKILL.md
+curl -L https://raw.githubusercontent.com/Steve0verton/youtube-transcriber/main/skill/youtube-transcribe/references/models-and-quality.md \
+  -o ~/.claude/skills/youtube-transcribe/references/models-and-quality.md
+curl -L https://raw.githubusercontent.com/Steve0verton/youtube-transcriber/main/skill/youtube-transcribe/references/troubleshooting.md \
+  -o ~/.claude/skills/youtube-transcribe/references/troubleshooting.md
+```
+
+### Project-scoped (commit alongside another repo)
+
+```bash
+mkdir -p .claude/skills
+cp -r /path/to/youtube-transcriber/skill/youtube-transcribe .claude/skills/
+```
+
+> **Prerequisites:** macOS (the skill drives the user's Terminal via `osascript`). The CLI tool
+> itself must already be installed and on `PATH` — see the section above. Apple Silicon is
+> recommended for GPU acceleration via the `mlx` extra; Intel Macs fall back to CPU.
+
+For step-by-step screenshots and troubleshooting, see [`docs/setup-claude-desktop.md`](docs/setup-claude-desktop.md).
+
+---
+
 ## Usage
 
 ### Basic transcription (outputs plain text to stdout)
@@ -130,10 +177,10 @@ youtube-transcriber transcribe "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 # Fast, low memory (good for testing)
 youtube-transcriber transcribe <url> --model tiny
 
-# Best quality (requires ~6GB VRAM or ~12GB RAM)
+# Best quality (~3 GB model download on first use)
 youtube-transcriber transcribe <url> --model large-v3
 
-# Balanced speed + quality (default, ~800MB VRAM or ~2GB RAM)
+# Balanced speed + quality (default, ~800 MB model download on first use)
 youtube-transcriber transcribe <url> --model turbo
 ```
 
@@ -202,27 +249,28 @@ youtube-transcriber models
 
 ---
 
-## Integration with Claude Desktop
+## Using It with Claude
 
-Claude Desktop can run shell commands directly — no MCP server needed. Just ask Claude:
-
-> "Please transcribe this YouTube video for me: https://www.youtube.com/watch?v=..."
-
-Claude will run:
-```bash
-youtube-transcriber transcribe "https://..." 2>/dev/null
-```
-
-The `2>/dev/null` suppresses progress output so Claude receives only the clean transcript text. From there, Claude can summarize, extract key points, translate, or answer questions about the content.
-
-### Example Claude prompt
+The recommended path is to install the [Claude skill](#install-the-claude-skill) — once
+imported, Claude Desktop and Claude Code automatically know how to drive the CLI on your
+Mac (open a Terminal via `osascript`, run the transcribe command with a video-ID-keyed
+output file, poll until done, read the result back). Just paste a YouTube URL and ask:
 
 ```text
 Transcribe this YouTube video and give me a 5-bullet summary of the key points:
 https://www.youtube.com/watch?v=...
 ```
 
-Claude runs `youtube-transcriber transcribe <url>` and works with the returned text directly.
+**Without the skill**, Claude Code can still pipe the CLI directly:
+
+```bash
+youtube-transcriber transcribe "https://..." 2>/dev/null
+```
+
+The `2>/dev/null` redirects progress to /dev/null so only the clean transcript reaches
+stdout. This works when the agent has shell access on the same machine the CLI is
+installed on (Claude Code), but won't work from Claude Desktop's containerized environment
+without the skill — that's exactly the gap the skill fills.
 
 ---
 
@@ -254,14 +302,17 @@ youtube-transcriber CLI (click)
 
 ## Whisper Model Reference
 
-| Model | Parameters | Speed | VRAM | Notes |
+Sizes below are the on-disk weight downloads pulled from HuggingFace on first use; runtime memory
+depends on backend and quantization (`float16` ≈ size, `int8` ≈ half-size).
+
+| Model | Parameters | Speed | Size on disk | Notes |
 |---|---|---|---|---|
-| `tiny` | 39M | Fastest | ~1 GB | Good for testing |
-| `base` | 74M | Very fast | ~1 GB | |
-| `small` | 244M | Fast | ~2 GB | |
-| `medium` | 769M | Moderate | ~5 GB | |
-| `large-v3` | 1550M | Slow | ~10 GB | Best quality |
-| `turbo` | 809M | Fast | ~6 GB | **Default** — optimized large-v3, 8× faster with minimal quality loss |
+| `tiny` | 39M | Fastest | ~75 MB | Good for testing |
+| `base` | 74M | Very fast | ~150 MB | |
+| `small` | 244M | Fast | ~250 MB | |
+| `medium` | 769M | Moderate | ~1.5 GB | |
+| `large-v3` | 1550M | Slow | ~3 GB | Best quality |
+| `turbo` | 809M | Fast | ~800 MB | **Default** — optimized large-v3, 8× faster with minimal quality loss |
 
 `.en` English-only variants are available for `tiny`, `base`, `small`, `medium` and are slightly faster/more accurate for English content.
 
@@ -341,8 +392,10 @@ exposes CDP), you can instruct your LLM agent to:
 
 | Doc | Description |
 |---|---|
-| [setup-claude-desktop.md](docs/setup-claude-desktop.md) | Install on a new machine and configure Claude Desktop |
-| [lessons-learned/2026-03-02-vad-and-nodejs-fixes.md](docs/lessons-learned/2026-03-02-vad-and-nodejs-fixes.md) | VAD silence bug and Node.js runtime discovery |
+| [skill/youtube-transcribe/](skill/youtube-transcribe/) | The Claude skill source (SKILL.md + references) — copied or zipped into Claude |
+| [docs/setup-claude-desktop.md](docs/setup-claude-desktop.md) | Step-by-step install + skill setup for Claude Desktop and Claude Code |
+| [docs/lessons-learned/2026-03-02-vad-and-nodejs-fixes.md](docs/lessons-learned/2026-03-02-vad-and-nodejs-fixes.md) | VAD silence bug and Node.js runtime discovery |
+| [CHANGELOG.md](CHANGELOG.md) | Release history (Keep a Changelog format) |
 
 ---
 

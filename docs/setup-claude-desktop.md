@@ -97,119 +97,85 @@ A successful run means everything is correctly installed.
 
 ---
 
-## Step 4: Configure the Skill
+## Step 4: Install the Claude Skill
 
-Three options are available depending on how you use Claude. Pick one.
-
----
-
-### Option A — Install the packaged `.skill` file (recommended for Claude Desktop)
-
-This repo ships a pre-packaged skill file that can be imported directly into
-any Claude app with a skill library or skill import UI.
-
-**File:** `docs/youtube-transcriber.skill`
-
-1. In Claude Desktop (or Claude.ai), open **Settings → Skills** (or the equivalent
-   skill management panel for your version).
-2. Choose **Import skill** or **Add from file**.
-3. Select `docs/youtube-transcriber.skill` from this repository.
-4. Claude will load the skill and it will be available in all future conversations.
-
-> This is the simplest option if your Claude app supports skill import. The packaged
-> file contains the full skill definition, workflow instructions, and reference documents.
+Pick the option that matches how you use Claude.
 
 ---
 
-### Option B — Copy the skill folder (user-level install for Claude Code / CLI)
+### Option A — Claude Desktop / Claude.ai (recommended)
 
-If you use Claude Code or the Claude CLI, skills are loaded from `~/.claude/skills/`.
-Copying the skill folder there makes it available in every project.
+Download the packaged `.skill` bundle from the latest GitHub Release and import it.
 
-**Source:** `docs/.claude/skills/youtube-transcribe/`
+1. Open the [latest release](https://github.com/Steve0verton/youtube-transcriber/releases/latest).
+2. Download the `youtube-transcribe.skill` asset.
+3. In Claude Desktop or Claude.ai, open **Settings → Skills** and choose **Import skill** (or
+   drag the file onto the window — most builds accept it).
+4. The skill is now available in every conversation. Paste a YouTube URL and ask Claude to
+   transcribe or summarize it.
+
+> The packaged bundle is just a zipped folder containing `SKILL.md` and `references/`.
+> Source lives at `skill/youtube-transcribe/` in this repo if you want to inspect it
+> before importing.
+
+---
+
+### Option B — Claude Code (user-level install)
+
+Claude Code loads skills from `~/.claude/skills/`. Copy the folder there:
 
 ```bash
-# Create the skills directory if it doesn't exist
+# From inside this repo:
 mkdir -p ~/.claude/skills
-
-# Copy the skill folder
-cp -r docs/.claude/skills/youtube-transcribe ~/.claude/skills/
+cp -r skill/youtube-transcribe ~/.claude/skills/
 ```
 
-The installed structure will be:
+Or fetch it without cloning:
+
+```bash
+mkdir -p ~/.claude/skills/youtube-transcribe/references
+curl -L https://raw.githubusercontent.com/Steve0verton/youtube-transcriber/main/skill/youtube-transcribe/SKILL.md \
+  -o ~/.claude/skills/youtube-transcribe/SKILL.md
+curl -L https://raw.githubusercontent.com/Steve0verton/youtube-transcriber/main/skill/youtube-transcribe/references/models-and-quality.md \
+  -o ~/.claude/skills/youtube-transcribe/references/models-and-quality.md
+curl -L https://raw.githubusercontent.com/Steve0verton/youtube-transcriber/main/skill/youtube-transcribe/references/troubleshooting.md \
+  -o ~/.claude/skills/youtube-transcribe/references/troubleshooting.md
+```
+
+Final structure:
 
 ```
 ~/.claude/skills/
 └── youtube-transcribe/
-    ├── SKILL.md              # skill definition and workflow
+    ├── SKILL.md
     └── references/
         ├── models-and-quality.md
         └── troubleshooting.md
 ```
 
-Claude Code will automatically discover and load the skill on next launch. The
-`references/` documents are loaded on demand when the skill needs them.
+Claude Code discovers it on next launch.
 
 ---
 
-### Option C — Drop-in project skill (project-scoped)
+### Option C — Project-scoped install
 
-Use this when you want the skill available only within a specific project, without
-installing it globally. Place the single-file skill definition in your project's
-`.claude/` directory.
-
-**File:** `docs/youtube-transcribe.skill.md`
+To install the skill into a specific project (so only that project's Claude Code sessions
+see it, and the skill is checked in alongside the code):
 
 ```bash
-# From inside your target project:
+# From the target project's root:
 mkdir -p .claude/skills
-cp /path/to/youtube-transcriber/docs/youtube-transcribe.skill.md .claude/skills/
-
-# Or copy from the youtube-transcriber repo directly if it is a subdirectory
+cp -r /path/to/youtube-transcriber/skill/youtube-transcribe .claude/skills/
 ```
 
-This works with Claude Code and any tool that reads project-local `.claude/` skill
-files. It includes the full skill definition but not the separate reference documents
-(those are bundled inline). Suitable for projects where you want the skill checked
-into version control alongside the project itself.
+This produces `.claude/skills/youtube-transcribe/SKILL.md` plus its `references/` folder
+inside the project — committable to that repo if desired.
 
 ---
 
-## Step 5: Configure claude_desktop_config.json (Optional)
+## Step 5: Test Claude Integration
 
-Claude Desktop reads a JSON config file that can register tool paths explicitly.
-This is useful if `youtube-transcriber` is not on the default PATH that Claude Desktop
-sees (macOS GUI apps sometimes have a different PATH than your terminal).
-
-**Config file location (macOS):**
-
-```text
-~/Library/Application Support/Claude/claude_desktop_config.json
-```
-
-Open or create that file and add:
-
-```json
-{
-  "mcpServers": {}
-}
-```
-
-> If you run into PATH issues (Claude can't find the `youtube-transcriber` command),
-> use the full absolute path instead. Find it by running:
-
-```bash
-which youtube-transcriber
-```
-
-> Then in your system prompt replace `youtube-transcriber` with the full path,
-> e.g. `/Users/yourname/.local/bin/youtube-transcriber`.
-
----
-
-## Step 6: Test Claude Integration
-
-Open Claude Desktop and try one of the following prompts:
+Open Claude Desktop (or your Claude Code session) and try:
 
 ```text
 Transcribe this YouTube video for me:
@@ -221,16 +187,15 @@ Please summarize the key points from this video:
 https://youtu.be/dQw4w9WgXcQ
 ```
 
-```text
-What does this YouTube video say? Give me a bullet-point summary:
-https://www.youtube.com/watch?v=dQw4w9WgXcQ
-```
+The skill will:
 
-Claude should:
+1. Open a Terminal window on your Mac via `osascript`
+2. Run `youtube-transcriber transcribe "<url>" --output /tmp/transcript_<video_id>.txt`
+3. Poll the output file until transcription completes
+4. Read the transcript back and summarize / analyze as requested
 
-1. Run `youtube-transcriber transcribe "<url>" --quiet`
-2. Receive the transcript text
-3. Summarize or analyze it as requested
+You can watch the download + transcription progress live in the Terminal window the skill
+opens. The transcript is saved to `/tmp/transcript_<video_id>.txt` for inspection.
 
 ---
 
@@ -240,22 +205,25 @@ Claude should:
 You ask Claude about a YouTube video
         │
         ▼
-Claude runs: youtube-transcriber transcribe "<url>" --quiet
+Claude (via the skill) runs: osascript -e 'tell application "Terminal" to do script
+        "youtube-transcriber transcribe \"<url>\" --output /tmp/transcript_<vid>.txt"'
         │
-        ├── yt-dlp downloads the best audio stream → /tmp/tmpXXXXXX.wav
+        ├── yt-dlp downloads the best audio stream → tempfile.TemporaryDirectory()
         │
-        ├── faster-whisper transcribes locally (GPU if available, otherwise CPU)
+        ├── mlx-whisper (Apple Silicon GPU) or faster-whisper (CPU/CUDA) transcribes locally
         │
-        ├── Temp audio file is automatically deleted
+        ├── Transcript written to /tmp/transcript_<video_id>.txt
         │
-        └── Clean transcript text returned to Claude via stdout
+        └── Temp audio file is automatically deleted
                 │
                 ▼
-        Claude summarizes, answers questions, or analyzes the content
+        Claude polls the output file via osascript, reads it, and summarizes
+        / answers questions / extracts what you asked for.
 ```
 
 **No audio or transcripts are sent to any cloud service.** The only network
-activity is the initial YouTube download and (on first use) the Whisper model download.
+activity is the YouTube download (yt-dlp) and (on first use) the Whisper model download
+from HuggingFace.
 
 ---
 
@@ -264,7 +232,7 @@ activity is the initial YouTube download and (on first use) the Whisper model do
 | Goal | Command |
 |---|---|
 | Basic transcript | `youtube-transcriber transcribe "<url>"` |
-| Clean output only (no progress) | `youtube-transcriber transcribe "<url>" --quiet` |
+| Clean output only (no progress) | `youtube-transcriber transcribe "<url>" 2>/dev/null` |
 | Highest quality | `youtube-transcriber transcribe "<url>" --model large-v3` |
 | Save to file | `youtube-transcriber transcribe "<url>" --output transcript.txt` |
 | SRT subtitles | `youtube-transcriber transcribe "<url>" --format srt` |
@@ -281,32 +249,20 @@ activity is the initial YouTube download and (on first use) the Whisper model do
 
 ## Model Selection Guide
 
-| Model | Size | Speed | Notes |
-|---|---|---|---|
-| `tiny` | ~1 GB | Fastest | Good for quick tests |
-| `base` | ~1 GB | Very fast | |
-| `small` | ~2 GB | Fast | |
-| `medium` | ~5 GB | Moderate | |
-| `turbo` | ~6 GB | Fast | **Default** — optimized large-v3, 8× faster |
-| `large-v3` | ~10 GB | Slow | Highest accuracy |
+See the canonical [Whisper Model Reference table in the README](../README.md#whisper-model-reference)
+for parameter counts, on-disk sizes, and speed trade-offs. The short version: `turbo` is the
+default and is the right choice for almost every use case. Switch to `large-v3` only when
+turbo's transcript quality isn't good enough on a specific video.
 
 **Apple Silicon (M-series) — GPU acceleration via MLX:**
 
-With `uv sync --extra mlx` installed, the tool automatically uses `mlx-whisper`
-which runs on the Metal GPU and Apple Neural Engine. This is dramatically faster
-than CPU-only and keeps fans quiet:
+With `uv sync --extra mlx` installed, the tool automatically uses `mlx-whisper`, which runs
+on the Metal GPU and Apple Neural Engine. This is dramatically faster than CPU-only and keeps
+the fans quiet. The device flag is `--device mps` (the default on Apple Silicon).
 
-| Mac | CPU-only (faster-whisper) | GPU (mlx-whisper) |
-|---|---|---|
-| M4 Pro | ~27 load avg, fans loud | Metal GPU, fans quiet |
-| Device flag | `--device cpu` | `--device mps` (default on Apple Silicon) |
-
-GPU acceleration via Metal is provided by the MLX framework (Apple's machine
-learning framework for Apple Silicon). The `mlx-metal` package is installed
-automatically with `uv sync --extra mlx`.
-
-> **Note:** `faster-whisper` (the CPU backend) uses CTranslate2 which only
-> supports CUDA GPUs — it always falls back to CPU on Apple Silicon.
+> **Note:** `faster-whisper` (the CPU backend) uses CTranslate2, which only supports CUDA
+> GPUs — it always falls back to CPU on Apple Silicon. The `mlx` extra is the right answer
+> for Apple Silicon GPU acceleration.
 
 ---
 
