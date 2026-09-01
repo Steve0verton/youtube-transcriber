@@ -24,10 +24,17 @@
 #
 # DEPENDENCIES
 #   - uv  (https://docs.astral.sh/uv/)
-#   - The youtube-transcriber project at ~/dev/youtube-transcriber (or override
-#     PROJECT_DIR below)
-#   - mlx-whisper extra installed: uv sync --extra mlx   (Apple Silicon)
-#     OR faster-whisper: uv sync                         (CPU / CUDA)
+#   - Run from a clone of this repo; PROJECT_DIR is derived from the script's own
+#     location, so no path configuration is needed.
+#   - The transcription backend for this machine's auto-detected device:
+#       Apple Silicon -> mlx-whisper, so `uv sync --extra mlx` is REQUIRED here.
+#                        There is no CPU fallback; without it every file fails.
+#       CPU / CUDA    -> faster-whisper, installed by a plain `uv sync`.
+#
+# NOTES
+#   This script calls transcribe_audio() directly rather than the CLI, so it does
+#   not take the single-instance PID lock and does not run the ffmpeg check. Do
+#   not run it alongside a `youtube-transcriber transcribe` invocation.
 #
 # EXAMPLES
 #   bash scripts/transcribe_local_videos.sh ~/Downloads/temp
@@ -53,6 +60,10 @@ if [[ ! -d "$VIDEOS_DIR" ]]; then
     echo "Error: directory not found: $VIDEOS_DIR" >&2
     exit 1
 fi
+
+# Resolve to an absolute path: the loop below cds into the repo root, so a
+# relative argument would stop resolving after the first iteration.
+VIDEOS_DIR="$(cd "$VIDEOS_DIR" && pwd)"
 # ------------------------------------------------------------------------------
 
 echo "==> Source directory : $VIDEOS_DIR" >&2
@@ -61,6 +72,11 @@ echo >&2
 
 count=0
 skipped=0
+failed=0
+index=0   # position in the batch, advances regardless of outcome
+
+# uv resolves the project from the current directory, so run the whole loop there.
+cd "$PROJECT_DIR"
 
 while IFS= read -r -d '' video; do
     filename="$(basename "$video")"
@@ -73,10 +89,12 @@ while IFS= read -r -d '' video; do
         continue
     fi
 
-    echo "==> [$((count+1))] Transcribing: $filename" >&2
+    (( index++ )) || true
+    echo "==> [$index] Transcribing: $filename" >&2
 
-    cd "$PROJECT_DIR"
-    uv run python - "$video" "$transcript" <<'PYEOF'
+    # A batch run must survive one bad file: `set -e` would otherwise abort the whole
+    # directory on the first failure, which defeats the point of batching.
+    if uv run python - "$video" "$transcript" <<'PYEOF'
 import sys
 from pathlib import Path
 from youtube_transcriber.transcriber import transcribe_audio
@@ -94,12 +112,19 @@ print(
     file=sys.stderr,
 )
 PYEOF
-
-    (( count++ )) || true
+    then
+        (( count++ )) || true
+    else
+        echo "  [fail] $filename — see the error above; continuing with the next file" >&2
+        (( failed++ )) || true
+    fi
     echo >&2
 
 done < <(find "$VIDEOS_DIR" -maxdepth 1 \
     \( -iname "*.mp4" -o -iname "*.webm" -o -iname "*.mkv" -o -iname "*.mov" -o -iname "*.m4v" \) \
     -print0 | sort -z)
 
-echo "==> Done. Transcribed: $count  |  Skipped: $skipped" >&2
+echo "==> Done. Transcribed: $count  |  Skipped: $skipped  |  Failed: $failed" >&2
+
+# Non-zero exit when anything failed, so a caller can branch on it.
+[[ $failed -eq 0 ]] || exit 1

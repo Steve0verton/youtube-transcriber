@@ -1,6 +1,6 @@
 [project]
 name = "youtube-transcriber"
-version = "0.2.6"
+version = "0.4.0"
 description = "Download YouTube audio and transcribe locally using faster-whisper. Designed for LLM ingestion via CLI."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -12,7 +12,8 @@ classifiers = [
     "Environment :: Console",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
-    "Operating System :: OS Independent",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -22,10 +23,15 @@ classifiers = [
 ]
 
 dependencies = [
-    "yt-dlp>=2024.1.1",
+    # YouTube changes its extraction surface constantly and yt-dlp ships fixes within days,
+    # so a stale yt-dlp is the top cause of download failure. Keep this floor current.
+    "yt-dlp>=2026.8.19",
     "faster-whisper>=1.0.0",
     "click>=8.1.0",
-    "secretstorage>=3.5.0",
+    # Backs yt-dlp's Linux keyring cookie path, which is what --cookies-from-browser
+    # drives. macOS uses the Keychain and Windows its own DPAPI decryptor, so neither
+    # ever reaches this dependency.
+    "secretstorage>=3.5.0; sys_platform == 'linux'",
 ]
 
 [project.optional-dependencies]
@@ -45,9 +51,11 @@ mlx = [
 youtube-transcriber = "youtube_transcriber.cli:cli"
 
 [project.urls]
-Homepage = "https://github.com/Steve0verton/youtube-transcriber"
-Repository = "https://github.com/Steve0verton/youtube-transcriber"
-Issues = "https://github.com/Steve0verton/youtube-transcriber/issues"
+Homepage = "https://github.com/overtonlabs/youtube-transcriber"
+Repository = "https://github.com/overtonlabs/youtube-transcriber"
+Issues = "https://github.com/overtonlabs/youtube-transcriber/issues"
+Changelog = "https://github.com/overtonlabs/youtube-transcriber/blob/main/CHANGELOG.md"
+Documentation = "https://github.com/overtonlabs/youtube-transcriber#readme"
 
 [build-system]
 requires = ["hatchling"]
@@ -59,7 +67,7 @@ packages = ["src/youtube_transcriber"]
 [tool.ruff]
 line-length = 100
 src = ["src", "tests"]
-target-version = "py310"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = [

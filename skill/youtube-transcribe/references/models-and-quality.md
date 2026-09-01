@@ -2,58 +2,71 @@
 
 ## Model Selection
 
-Use `turbo` by default. Only suggest alternatives when there's a specific reason.
+Use `turbo` by default. Only suggest an alternative when there is a specific reason.
 
-| Model | Size | Best for |
+Sizes are the Apple Silicon (MLX) download — what the default path pulls. The CPU/CUDA path
+downloads CTranslate2 weights instead, which are smaller at `int8`.
+
+| Model | Download | Best for |
 |---|---|---|
-| `tiny` | ~75 MB | Quick pipeline test — low accuracy, fast |
-| `base` | ~150 MB | Fast, acceptable quality for short clips |
-| `small` | ~250 MB | Good balance for clips under 10 minutes |
-| `turbo` | ~800 MB | **Default** — best overall on Apple Silicon. Optimized large-v3, 8× faster with minimal quality loss |
-| `distil-large-v3` | ~1.5 GB | Near large-v3 accuracy, faster inference |
-| `large-v3` | ~3 GB | Maximum accuracy. Suggest when transcript quality from turbo is poor |
+| `tiny` | ~75 MB | Quick pipeline test — fast, low accuracy |
+| `base` | ~150 MB | Fast, acceptable for short clips |
+| `small` | ~0.5 GB | Good balance for clips under 10 minutes |
+| `turbo` | ~1.6 GB | **Default** — pruned large-v3, ~8× faster, minimal quality loss |
+| `distil-large-v3` | ~1.5 GB | Near large-v3 accuracy, faster inference. English-only |
+| `large-v3` | ~3 GB | Maximum accuracy. Suggest when turbo's transcript is poor |
 
-`.en` English-only variants exist for tiny, base, small, and medium — slightly faster and more accurate
-for English-only content.
+### The full list
 
-**First-time model download:** When a model isn't cached yet, the tool downloads it from HuggingFace
-(~800 MB for turbo). Warn the user this takes a few minutes. Subsequent runs load from cache instantly.
+All 16 accepted `--model` values: `tiny`, `tiny.en`, `base`, `base.en`, `small`, `small.en`,
+`medium`, `medium.en`, `large-v1`, `large-v2`, `large-v3`, `turbo`, `distil-small.en`,
+`distil-medium.en`, `distil-large-v2`, `distil-large-v3`.
+
+- The `.en` variants (`tiny`/`base`/`small`/`medium`) are slightly faster and more accurate on
+  English-only audio.
+- `large-v1` and `large-v2` exist but there is no good reason to prefer them over `large-v3`.
+- **`distil-small.en` and `distil-large-v2` have no MLX build.** On Apple Silicon they fail with
+  "has no MLX repo mapping" and need `--device cpu`. `distil-medium.en` and `distil-large-v3` work
+  on both backends.
+
+**First-time model download:** when a model is not cached, the tool downloads it from HuggingFace.
+Warn the user this takes a few minutes (~1.6 GB for `turbo`). Later runs load from cache instantly.
 
 ---
 
 ## Interpreting Transcript Quality
 
-Whisper transcription is high quality but not perfect. These factors affect output:
+Whisper is high quality but not perfect. These factors degrade output:
 
 | Factor | Effect |
 |---|---|
-| Background music or ambient sound | Words garbled or invented — model transcribes non-speech audio |
-| Low audio quality or heavy compression | Increased word substitutions, dropped syllables |
+| Background music or ambient sound | Words garbled or invented — the model transcribes non-speech audio |
+| Low audio quality or heavy compression | Word substitutions, dropped syllables |
 | Heavy accents or non-standard pronunciation | Occasional word-level errors |
-| Technical jargon, proper nouns, names | Frequently misspelled or phonetically approximated (e.g., "Kubernetes" → "Cubeerness") |
+| Technical jargon, proper nouns, names | Frequently misspelled or phonetically approximated ("Kubernetes" → "Cubeerness") |
 | Overlapping speakers | Words merged or misattributed |
-| Music intro/outro | Spurious text fragments at start/end |
+| Music intro/outro | Spurious text fragments at the start or end |
 | Very fast speech | Words run together or partially dropped |
 
 ### How to handle errors
 
-- **Don't present phonetic guesses as facts.** If a proper noun looks wrong, use surrounding context to
-  infer the likely correct form. Note uncertainty when it matters.
-- **Use context to resolve ambiguity.** A word that looks like a typo usually has a plausible correct
-  reading in context.
-- **Flag low-confidence passages.** If a section is clearly garbled (disconnected words, nonsensical
-  phrases — likely music or noise), tell the user that portion wasn't reliably transcribed rather than
+- **Don't present phonetic guesses as facts.** If a proper noun looks wrong, infer the likely form
+  from context and note the uncertainty when it matters.
+- **Use context to resolve ambiguity.** A word that looks like a typo usually has a plausible
+  correct reading.
+- **Flag low-confidence passages.** If a section is clearly garbled — disconnected words, nonsense
+  phrases, likely music or noise — say that portion wasn't reliably transcribed rather than
   summarizing gibberish.
-- **Quote carefully.** When attributing specific words to a speaker, add a light caveat if uncertainty
-  exists: "roughly paraphrasing" or "transcript may contain minor errors."
-- **Suggest a better model if quality is poor.** If the transcript has many obvious errors throughout:
-  "The transcript has several unclear passages — re-running with `--model large-v3` will improve accuracy."
+- **Quote carefully.** When attributing specific words to a speaker, add a light caveat if there is
+  any uncertainty: "roughly paraphrasing", or "the transcript may contain minor errors".
+- **Suggest a better model if quality is poor.** If errors are pervasive: "The transcript has
+  several unclear passages — re-running with `--model large-v3` will improve accuracy."
 
 ### Quick quality signals
 
 | Signal | Likely cause | Action |
 |---|---|---|
-| Segment count is 0 or very low relative to video length | VAD or audio pipeline issue | Retry without `--vad` |
+| Empty transcript, or very few segments for the video length | VAD discarded the audio | Retry without `--vad` |
 | Opening segments are nonsensical | Intro music transcribed as speech | Discard those segments |
 | Proper nouns consistently garbled | Phonetic approximation | Infer from context |
 | Large blocks of repetitive or looping text | Model hallucination on near-silence | Ignore those sections |
@@ -62,27 +75,29 @@ Whisper transcription is high quality but not perfect. These factors affect outp
 
 ## VAD (Voice Activity Detection)
 
-The `--vad` flag pre-filters audio, discarding anything classified as non-speech. This is destructive
-and silent — if it discards everything, you get 0 segments with no error message.
+`--vad` pre-filters the audio and discards anything classified as non-speech. It is destructive and
+gives no error when it removes everything — you get an empty transcript with **exit code 0**.
 
 | Content type | Use `--vad`? |
 |---|---|
-| Music video | Never — entire audio track will be discarded |
+| Music video | Never — the entire track is discarded |
 | Video with intro music or background sound | No |
 | Podcast (speech only, no music) | Yes — removes silence, speeds up transcription |
 | Lecture/interview in a quiet room | Generally safe |
 
-**Note:** `--vad` is silently ignored on the Apple Silicon (MLX) backend. It only applies when the
-tool falls back to CPU (faster-whisper).
+**On the Apple Silicon (MLX) backend `--vad` is ignored**, and the tool warns on stderr:
+`Warning: --vad is not supported with the MLX backend and will be ignored.` The flag only takes
+effect on the faster-whisper backend (`--device cpu` or CUDA). The warning prints even with
+`--quiet`.
 
 ---
 
 ## Reading the Terminal Output
 
-The Terminal window shows this progression during a successful run:
+A successful run on Apple Silicon looks like this:
 
-```
-youtube-transcriber v0.2.2
+```text
+youtube-transcriber vX.Y.Z
   URL:    https://www.youtube.com/watch?v=dQw4w9WgXcQ
   Video:  dQw4w9WgXcQ
   Model:  turbo
@@ -90,7 +105,9 @@ youtube-transcriber v0.2.2
   Device: Apple Silicon GPU  [MLX / Metal + Neural Engine]   ← GPU confirmed
 
 [ Step 1/2 ] Downloading audio...
-  (yt-dlp progress bar)
+  Downloading audio: dQw4w9WgXcQ.webm
+  Download complete (3.4 MB). Extracting audio...
+  Audio ready: dQw4w9WgXcQ.wav
 
 [ Step 2/2 ] Transcribing...
   Model 'turbo' loaded from cache:
@@ -101,13 +118,18 @@ Detected language: English
 [00:05.120 --> 00:10.440]  Today we're going to talk about...
 
   Transcription complete. Language: en | Duration: 1h 3m 57s | Segments: 1341
+Transcript saved to: /tmp/transcript_dQw4w9WgXcQ.txt
 ```
 
-**Key things to look for:**
+**What to look for:**
 
-- **Device line:** Should say `Apple Silicon GPU  [MLX / Metal + Neural Engine]`. If it says
-  `CPU  [faster-whisper]`, mlx-whisper is not installed — see `troubleshooting.md`.
-- **Model loading:** "loaded from cache" = instant. "not in cache -- downloading" = first-time download,
-  warn the user it'll take a few minutes.
-- **Segment count:** A 1-hour video should produce ~1000+ segments. If you see 0 or very few, something
-  went wrong (likely VAD filtering or audio issue).
+- **Device line** — `Apple Silicon GPU  [MLX / Metal + Neural Engine]` (two spaces before the
+  bracket) confirms the GPU. `CPU  [faster-whisper]` on an Apple Silicon Mac means `--device cpu`
+  was passed explicitly; it is not a symptom of a missing mlx extra. See `troubleshooting.md`.
+- **Model loading** — "loaded from cache" is instant. "not in cache — downloading from HuggingFace"
+  means a first-time download; warn the user it takes a few minutes.
+- **Segment count** — a 1-hour video should produce roughly 1000+ segments. Zero or very few means
+  something went wrong, most likely VAD.
+- There is **no** `Loading model ... on Apple Silicon GPU (Metal/ANE)` line. The MLX path never
+  prints one; `Loading model '<name>' on CPU (threads: N)...` appears only on the faster-whisper
+  backend.

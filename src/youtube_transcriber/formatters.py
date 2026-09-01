@@ -7,6 +7,7 @@ in the corresponding output format (plain text, JSON, SRT, or WebVTT).
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 
 from youtube_transcriber.transcriber import TranscriptResult
 from youtube_transcriber.utils import seconds_to_timestamp
@@ -15,8 +16,12 @@ from youtube_transcriber.utils import seconds_to_timestamp
 def format_text(result: TranscriptResult) -> str:
     """Format transcript as clean plain text.
 
-    Joins all segment texts with single-space separation. This is the default
-    output format — ideal for piping into LLMs.
+    Joins segment texts with a blank line, giving one paragraph per Whisper
+    segment, and skips whitespace-only segments. This is the default output
+    format — ideal for piping into LLMs.
+
+    Note this is deliberately not the same as ``TranscriptResult.text``, which
+    joins with a single space. Tests pin the blank-line separation.
 
     Args:
         result: The TranscriptResult to format.
@@ -120,7 +125,10 @@ def format_vtt(result: TranscriptResult) -> str:
     return "\n\n".join(blocks)
 
 
-FORMAT_FUNCTIONS = {
+# The registry is the single source of truth for output formats: cli.py builds the
+# --format click.Choice from these keys and dispatches straight through this dict,
+# so adding an entry here is the only change a new format needs outside this file.
+FORMAT_FUNCTIONS: dict[str, Callable[[TranscriptResult], str]] = {
     "text": format_text,
     "json": format_json,
     "srt": format_srt,

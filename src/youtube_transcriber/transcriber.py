@@ -53,10 +53,10 @@ AVAILABLE_MODELS: dict[str, dict[str, str]] = {
     "large-v2":        {"params": "1550M", "vram": "~10 GB", "notes": ""},
     "large-v3":        {"params": "1550M", "vram": "~10 GB", "notes": "Best quality"},
     "turbo":           {"params": "809M",  "vram": "~6 GB",  "notes": "DEFAULT — optimized large-v3, 8× faster"},
-    "distil-small.en": {"params": "166M",  "vram": "~1 GB",  "notes": "Distilled, English-only, very fast"},
+    "distil-small.en": {"params": "166M",  "vram": "~1 GB",  "notes": "Distilled, English-only, very fast (no MLX build — needs --device cpu)"},
     "distil-medium.en":{"params": "394M",  "vram": "~3 GB",  "notes": "Distilled, English-only"},
-    "distil-large-v2": {"params": "756M",  "vram": "~6 GB",  "notes": "Distilled large-v2"},
-    "distil-large-v3": {"params": "756M",  "vram": "~6 GB",  "notes": "Distilled large-v3"},
+    "distil-large-v2": {"params": "756M",  "vram": "~6 GB",  "notes": "Distilled large-v2, English-only (no MLX build — needs --device cpu)"},
+    "distil-large-v3": {"params": "756M",  "vram": "~6 GB",  "notes": "Distilled large-v3, English-only"},
 }
 
 DEFAULT_MODEL: str = "turbo"
@@ -79,10 +79,13 @@ MLX_MODEL_REPOS: dict[str, str] = {
     "large-v3":         "mlx-community/whisper-large-v3-mlx",
     # turbo = openai/whisper-large-v3-turbo (pruned large-v3, 8× faster)
     "turbo":            "mlx-community/whisper-large-v3-turbo",
-    "distil-small.en":  "mlx-community/distil-whisper-small.en-mlx",
-    "distil-medium.en": "mlx-community/distil-whisper-medium.en-mlx",
-    "distil-large-v2":  "mlx-community/distil-whisper-large-v2-mlx",
-    "distil-large-v3":  "mlx-community/distil-whisper-large-v3-mlx",
+    # The distil repos carry no "-mlx" suffix, unlike the rest of the family.
+    "distil-medium.en": "mlx-community/distil-whisper-medium.en",
+    "distil-large-v3":  "mlx-community/distil-whisper-large-v3",
+    # distil-small.en and distil-large-v2 are deliberately absent: mlx-community
+    # publishes no MLX conversion of either. They remain in AVAILABLE_MODELS
+    # because faster-whisper serves them on CPU/CUDA; on Apple Silicon they raise
+    # the "no MLX repo mapping" error below, which points at --device cpu.
 }
 
 # HuggingFace hub cache root (respects HF_HOME / HF_HUB_CACHE env overrides)

@@ -1,10 +1,18 @@
 """Tests for youtube_transcriber.utils — URL parsing and helper functions."""
 
+import os
+import sys
+
+import pytest
 
 from youtube_transcriber.utils import (
+    acquire_run_lock,
+    check_ffmpeg,
+    detect_device,
     extract_video_id,
     format_duration,
     is_youtube_url,
+    release_run_lock,
     seconds_to_timestamp,
 )
 
@@ -152,3 +160,102 @@ class TestSecondsToTimestamp:
         srt = seconds_to_timestamp(42.123, vtt=False)
         vtt = seconds_to_timestamp(42.123, vtt=True)
         assert srt.replace(",", ".") == vtt
+
+
+class TestYouTubeMusicHost:
+    """music.youtube.com share links are ordinary videos; yt-dlp redirects them."""
+
+    def test_music_host_is_accepted(self) -> None:
+        assert is_youtube_url("https://music.youtube.com/watch?v=dQw4w9WgXcQ")
+
+    def test_music_host_video_id_extracts(self) -> None:
+        assert (
+            extract_video_id("https://music.youtube.com/watch?v=dQw4w9WgXcQ")
+            == "dQw4w9WgXcQ"
+        )
+
+    def test_mobile_host_is_accepted(self) -> None:
+        assert is_youtube_url("https://m.youtube.com/watch?v=dQw4w9WgXcQ")
+
+    def test_www_youtu_be_is_accepted(self) -> None:
+        assert is_youtube_url("https://www.youtu.be/dQw4w9WgXcQ")
+
+
+class TestCheckFfmpeg:
+    """check_ffmpeg raises click.ClickException (exit 1), not SystemExit."""
+
+    def test_raises_click_exception_when_absent(self, monkeypatch) -> None:
+        import click
+
+        monkeypatch.setattr(
+            "youtube_transcriber.utils.shutil.which", lambda name: None
+        )
+        with pytest.raises(click.ClickException) as excinfo:
+            check_ffmpeg()
+        assert "ffmpeg" in str(excinfo.value)
+
+    def test_returns_none_when_present(self, monkeypatch) -> None:
+        monkeypatch.setattr(
+            "youtube_transcriber.utils.shutil.which", lambda name: "/usr/bin/ffmpeg"
+        )
+        assert check_ffmpeg() is None
+
+
+class TestDetectDevice:
+    """auto resolves mps -> cuda -> cpu. Apple Silicon never falls back to CPU."""
+
+    def test_apple_silicon_returns_mps(self, monkeypatch) -> None:
+        monkeypatch.setattr(
+            "youtube_transcriber.utils.is_apple_silicon", lambda: True
+        )
+        assert detect_device() == "mps"
+
+    def test_falls_back_to_cpu_without_gpu(self, monkeypatch) -> None:
+        monkeypatch.setattr(
+            "youtube_transcriber.utils.is_apple_silicon", lambda: False
+        )
+        monkeypatch.setitem(sys.modules, "ctranslate2", None)
+        assert detect_device() == "cpu"
+
+
+class TestRunLock:
+    """A PID lock keeps concurrent transcriptions from thrashing the GPU/CPU."""
+
+    @pytest.fixture(autouse=True)
+    def _isolated_lock(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(
+            "youtube_transcriber.utils._LOCK_FILE", tmp_path / "run.lock"
+        )
+        self.lock = tmp_path / "run.lock"
+
+    def test_acquire_writes_current_pid(self) -> None:
+        assert acquire_run_lock() is True
+        assert self.lock.read_text().strip() == str(os.getpid())
+
+    def test_second_acquire_fails_while_holder_is_alive(self) -> None:
+        assert acquire_run_lock() is True
+        assert acquire_run_lock() is False
+
+    def test_stale_lock_from_dead_pid_is_taken_over(self) -> None:
+        # PID 0 is never a live user process, so the lock reads as stale.
+        self.lock.write_text("999999999")
+        assert acquire_run_lock() is True
+        assert self.lock.read_text().strip() == str(os.getpid())
+
+    def test_unparseable_lock_is_treated_as_stale(self) -> None:
+        self.lock.write_text("not-a-pid")
+        assert acquire_run_lock() is True
+
+    def test_release_removes_our_own_lock(self) -> None:
+        acquire_run_lock()
+        release_run_lock()
+        assert not self.lock.exists()
+
+    def test_release_leaves_another_processes_lock_alone(self) -> None:
+        self.lock.write_text("999999999")
+        release_run_lock()
+        assert self.lock.exists()
+
+    def test_release_is_a_noop_when_no_lock_exists(self) -> None:
+        release_run_lock()  # must not raise
+        assert not self.lock.exists()

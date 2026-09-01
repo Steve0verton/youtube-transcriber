@@ -108,7 +108,10 @@ def cli() -> None:
     "-q",
     is_flag=True,
     default=False,
-    help="Suppress all progress output (stderr). Only the transcript is printed.",
+    help=(
+        "Suppress progress output on stderr. Errors and warnings still print to "
+        "stderr; only the transcript reaches stdout."
+    ),
 )
 @click.option(
     "--vad",
@@ -210,17 +213,32 @@ def transcribe(
     if not is_youtube_url(url):
         raise click.BadParameter(
             f"'{url}' does not appear to be a YouTube URL.\n"
-            "Supported formats: youtube.com/watch?v=..., youtu.be/..., youtube.com/shorts/...",
+            "Accepted hosts: youtube.com, www.youtube.com, m.youtube.com, "
+            "music.youtube.com, youtu.be.\n"
+            "Accepted paths: /watch?v=..., /shorts/..., /embed/..., /live/..., "
+            "or a youtu.be/... short link.",
             param_hint="URL",
         )
 
     # Extract video ID for unique filenames
     video_id = extract_video_id(url)
 
+    # A playlist, channel, or bare-homepage URL passes host validation but carries
+    # no video ID. Reject it here rather than handing yt-dlp something that would
+    # resolve to an arbitrary video.
+    if video_id is None:
+        raise click.BadParameter(
+            f"No video ID could be extracted from '{url}'.\n"
+            "This command transcribes one video at a time. Playlist, channel, and "
+            "search URLs are not supported — pass a single video URL "
+            "(youtube.com/watch?v=..., youtu.be/..., youtube.com/shorts/...).",
+            param_hint="URL",
+        )
+
     # Inject the video ID into the output filename stem so that transcribing
     # multiple videos never silently overwrites the previous result.
     # e.g. /tmp/transcript.txt  ->  /tmp/transcript_dQw4w9WgXcQ.txt
-    if output_path is not None and video_id and video_id not in output_path.stem:
+    if output_path is not None and video_id not in output_path.stem:
         output_path = (
             output_path.parent / f"{output_path.stem}_{video_id}{output_path.suffix}"
         )
@@ -261,8 +279,7 @@ def transcribe(
     if verbose:
         click.echo(f"youtube-transcriber v{__version__}", err=True)
         click.echo(f"  URL:    {url}", err=True)
-        if video_id:
-            click.echo(f"  Video:  {video_id}", err=True)
+        click.echo(f"  Video:  {video_id}", err=True)
         click.echo(f"  Model:  {model}", err=True)
         click.echo(f"  Format: {output_format}", err=True)
         click.echo(f"  Device: {device_label}", err=True)
@@ -321,7 +338,17 @@ def transcribe(
 
     # Write output
     if output_path is not None:
-        output_path.write_text(transcript, encoding="utf-8")
+        # The transcript is the product of a download plus a full transcription, so
+        # a missing parent directory must not be allowed to discard it here.
+        try:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(transcript, encoding="utf-8")
+        except OSError as exc:
+            click.echo(transcript)
+            raise click.ClickException(
+                f"Could not write the transcript to {output_path}: {exc}\n"
+                "The transcript was printed to stdout instead so the run is not lost."
+            ) from exc
         if verbose:
             click.echo(f"Transcript saved to: {output_path}", err=True)
     else:
@@ -355,7 +382,13 @@ def models() -> None:
     click.echo("  " + "-" * (col_model + col_params + col_vram + 30))
 
     for name, info in AVAILABLE_MODELS.items():
-        default_marker = " (default)" if name == DEFAULT_MODEL else ""
+        # The turbo row's own note already opens with "DEFAULT —", so appending a
+        # second marker would label it twice.
+        default_marker = (
+            " (default)"
+            if name == DEFAULT_MODEL and not info["notes"].startswith("DEFAULT")
+            else ""
+        )
         notes = (
             info["notes"] + default_marker if info["notes"] else default_marker.strip()
         )

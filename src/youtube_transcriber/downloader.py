@@ -7,16 +7,108 @@ from a YouTube URL to a temporary file, then cleans up automatically on exit.
 from __future__ import annotations
 
 import logging
+import re
 import shutil
 import tempfile
 from collections.abc import Generator
 from contextlib import contextmanager
+from datetime import date
 from pathlib import Path
 
 import click
 import yt_dlp
 
 log = logging.getLogger(__name__)
+
+# yt-dlp ships date-versioned releases (YYYY.MM.DD) many times a month because YouTube
+# changes its extraction surface constantly. A stale yt-dlp is by far the most common
+# cause of download failure, and it presents as an opaque "HTTP Error 403" or
+# "The page needs to be reloaded" rather than as anything version-related.
+_YT_DLP_STALE_DAYS = 60
+
+
+def _yt_dlp_version() -> str:
+    """Return the installed yt-dlp version string, or ``"unknown"``."""
+    try:
+        return str(yt_dlp.version.__version__)
+    except Exception:  # pragma: no cover - defensive
+        return "unknown"
+
+
+def _yt_dlp_age_days(today: date | None = None) -> int | None:
+    """Return the age in days of the installed yt-dlp release.
+
+    Args:
+        today: Reference date, for testing. Defaults to the current date.
+
+    Returns:
+        Age in days, or None if the version string is not date-shaped.
+    """
+    match = re.match(r"^(\d{4})\.(\d{1,2})\.(\d{1,2})", _yt_dlp_version())
+    if not match:
+        return None
+    try:
+        released = date(int(match[1]), int(match[2]), int(match[3]))
+    except ValueError:
+        return None
+    return ((today or date.today()) - released).days
+
+
+def _warn_if_yt_dlp_stale(verbose: bool) -> None:
+    """Warn on stderr when the installed yt-dlp is old enough to likely fail."""
+    age = _yt_dlp_age_days()
+    if age is None or age < _YT_DLP_STALE_DAYS:
+        return
+    log.warning("yt-dlp %s is %d days old", _yt_dlp_version(), age)
+    if verbose:
+        click.echo(
+            f"  Note: yt-dlp {_yt_dlp_version()} is {age} days old. YouTube extraction "
+            "commonly breaks with a stale yt-dlp —\n"
+            "        update it first if this download fails "
+            "(uv tool upgrade youtube-transcriber, or uv sync --upgrade-package yt-dlp).",
+            err=True,
+        )
+
+
+def _nvm_version_key(path: Path) -> tuple[int, ...]:
+    """Return a numeric sort key for an nvm version directory name.
+
+    nvm stores runtimes as ``~/.nvm/versions/node/vMAJOR.MINOR.PATCH``. Sorting
+    those names as strings puts ``v9.11.2`` above ``v22.9.0``, so the newest
+    install must be found by comparing the numbers instead. Non-version entries
+    (nvm also creates alias directories) sort lowest.
+
+    Args:
+        path: A directory inside the nvm versions root.
+
+    Returns:
+        A tuple of up to three integers, or ``(-1,)`` for a non-version name.
+    """
+    parts = re.findall(r"\d+", path.name)[:3]
+    return tuple(int(p) for p in parts) if parts else (-1,)
+
+
+def _homebrew_keg_paths(runtime: str) -> list[str]:
+    """Return Homebrew versioned-formula binaries for a runtime, newest first.
+
+    A versioned Homebrew formula such as ``node@22`` installs to
+    ``/opt/homebrew/opt/node@22/bin/node`` and is symlinked into
+    ``/opt/homebrew/bin`` only when it is the linked formula. A machine whose
+    only Node is a versioned keg therefore has no ``/opt/homebrew/bin/node`` at
+    all, which is invisible to the plain fallback paths.
+
+    Args:
+        runtime: Runtime name, e.g. ``"node"``.
+
+    Returns:
+        Absolute paths to matching binaries, highest version first.
+    """
+    matches: list[Path] = []
+    for prefix in ("/opt/homebrew/opt", "/usr/local/opt"):
+        matches.extend(Path(prefix).glob(f"{runtime}@*/bin/{runtime}"))
+    # The version lives in the keg directory name (node@22), two levels up.
+    matches.sort(key=lambda p: _nvm_version_key(p.parent.parent), reverse=True)
+    return [str(p) for p in matches]
 
 
 def _find_js_runtime() -> dict | None:
@@ -42,6 +134,7 @@ def _find_js_runtime() -> dict | None:
         "node": [
             "/opt/homebrew/bin/node",  # Homebrew, Apple Silicon
             "/usr/local/bin/node",  # Homebrew, Intel
+            *_homebrew_keg_paths("node"),  # Homebrew versioned formula (node@22)
             str(Path.home() / ".nvm/versions/node"),  # searched below
             str(Path.home() / ".volta/bin/node"),
             str(Path.home() / ".fnm/aliases/default/bin/node"),
@@ -49,11 +142,13 @@ def _find_js_runtime() -> dict | None:
         "deno": [
             "/opt/homebrew/bin/deno",
             "/usr/local/bin/deno",
+            *_homebrew_keg_paths("deno"),
             str(Path.home() / ".deno/bin/deno"),
         ],
         "bun": [
             "/opt/homebrew/bin/bun",
             "/usr/local/bin/bun",
+            *_homebrew_keg_paths("bun"),
             str(Path.home() / ".bun/bin/bun"),
         ],
     }
@@ -72,8 +167,10 @@ def _find_js_runtime() -> dict | None:
                 # Walk the nvm versions directory and pick the most recent
                 nvm_versions_dir = Path(candidate)
                 if nvm_versions_dir.is_dir():
-                    # Sort by version directory name, take the last (highest)
-                    versions = sorted(nvm_versions_dir.iterdir())
+                    # Sort by parsed version numbers, highest first. A plain name sort
+                    # is lexicographic, which ranks v9.x above v22.x and would select
+                    # the oldest installed Node.
+                    versions = sorted(nvm_versions_dir.iterdir(), key=_nvm_version_key)
                     for ver in reversed(versions):
                         node_bin = ver / "bin" / "node"
                         if node_bin.is_file():
@@ -129,8 +226,12 @@ def download_audio(
     automatically when the context manager exits.
 
     Args:
-        url: A YouTube URL (any supported format).
+        url: A YouTube URL (any supported format). If it carries a playlist
+            parameter, only the single video is downloaded.
         verbose: If True, progress messages are written to stderr.
+        cookies_from_browser: Optional browser name (e.g. "chrome", "firefox")
+            whose cookie store yt-dlp should use, for age-gated or rate-limited
+            videos. The value is passed through to yt-dlp unvalidated.
 
     Yields:
         A Path pointing to the downloaded audio file (m4a or best available).
@@ -142,6 +243,8 @@ def download_audio(
         with download_audio("https://youtube.com/watch?v=...") as audio_path:
             result = transcribe_audio(audio_path, model_name="turbo", device="auto")
     """
+    _warn_if_yt_dlp_stale(verbose)
+
     # Create a temp directory; yt-dlp will write to it
     with tempfile.TemporaryDirectory(prefix="yt_transcriber_") as tmpdir:
         output_template = str(Path(tmpdir) / "%(id)s.%(ext)s")
@@ -152,6 +255,12 @@ def download_audio(
             "outtmpl": output_template,
             "quiet": True,
             "no_warnings": True,
+            # `quiet` alone does NOT suppress yt-dlp's download progress bar, and yt-dlp
+            # writes it to STDOUT — which is the transcript stream. Without this, every
+            # successful download prepends ~765 bytes of "[download]  12.3% of ..." to
+            # the transcript an agent reads. Progress is reported by _ProgressHook on
+            # stderr instead.
+            "noprogress": True,
             "progress_hooks": [_ProgressHook(verbose=verbose)],
             "postprocessors": [
                 {
@@ -162,6 +271,10 @@ def download_audio(
             ],
             # Avoid leaving partial files on failure
             "nopart": True,
+            # A watch URL opened from inside a playlist carries &list=...; yt-dlp's
+            # default is to download the whole playlist. This tool transcribes exactly
+            # one video per invocation, so the playlist is always ignored.
+            "noplaylist": True,
         }
 
         # Pass browser cookies to bypass age-gates and 403 errors.
@@ -238,9 +351,13 @@ def download_audio(
             raise click.ClickException(
                 f"Failed to download audio from YouTube.\n\n"
                 f"Error: {exc}\n\n"
-                "Tips:\n"
-                "  • Check that the URL is valid and the video is public\n"
-                "  • For age-gated videos, try: --cookies-from-browser chrome\n"
-                "  • Make sure yt-dlp is up to date: uv run pip install -U yt-dlp\n"
-                "  • Install Node.js to enable YouTube challenge solving: brew install node"
+                "Most download failures are a stale yt-dlp. YouTube changes frequently and\n"
+                f"yt-dlp ships fixes within days; this run used yt-dlp {_yt_dlp_version()}.\n\n"
+                "Tips, in the order worth trying:\n"
+                "  1. Update yt-dlp — it is almost always this:\n"
+                "       uv tool upgrade youtube-transcriber   (if installed with uv tool)\n"
+                "       uv sync --upgrade-package yt-dlp      (from a clone)\n"
+                "  2. Check the URL is a valid, public, single video\n"
+                "  3. For age-gated or rate-limited videos: --cookies-from-browser chrome\n"
+                "  4. Install Node.js for JS challenge solving: brew install node"
             ) from exc

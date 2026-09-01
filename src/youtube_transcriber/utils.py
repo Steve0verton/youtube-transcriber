@@ -37,6 +37,9 @@ _YOUTUBE_VALID_HOSTS: frozenset[str] = frozenset(
         "youtube.com",
         "www.youtube.com",
         "m.youtube.com",
+        # YouTube Music share links resolve to ordinary videos; yt-dlp redirects them.
+        "music.youtube.com",
+        "www.music.youtube.com",
         "youtu.be",
         "www.youtu.be",
     ]
@@ -94,7 +97,8 @@ def check_ffmpeg() -> None:
     """Verify that ffmpeg is installed and accessible on PATH.
 
     Raises:
-        SystemExit: If ffmpeg is not found, prints an installation hint and exits.
+        click.ClickException: If ffmpeg is not found. The message carries
+            per-platform installation instructions.
     """
     if shutil.which("ffmpeg") is None:
         import click
